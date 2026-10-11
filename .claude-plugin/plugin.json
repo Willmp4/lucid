@@ -1,0 +1,12 @@
+{
+  "name": "omp-blocks",
+  "version": "0.1.0",
+  "description": "Draws file edits, shell commands, reads, and searches as OMP-style bordered tool cards",
+  "homepage": "https://github.com/Willmp4/omp-blocks",
+  "repository": "https://github.com/Willmp4/omp-blocks",
+  "license": "MIT",
+  "keywords": ["claude-code", "mods", "terminal", "tool-cards", "omp"],
+  "dependencies": ["skins@hellosverre-mods"],
+  "types": "./types/index.d.ts",
+  "author": { "name": "Will Goudie" }
+}

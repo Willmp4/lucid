@@ -1,0 +1,6 @@
+.DS_Store
+.claude/
+.claude-plugin/types/
+node_modules/
+dist/
+*.log
