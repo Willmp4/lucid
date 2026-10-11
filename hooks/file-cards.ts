@@ -87,27 +87,29 @@ export function formatFileTool(props: CallProps, cwd: string): CardContent | nul
   const requestedPath = textOf(input.file_path)
   const resultPath = output.type === 'text' ? textOf(file.filePath) : ''
   const scope = textOf(input.path) || cwd || '.'
+  const shownScope = cleanText(scope === cwd ? '.' : shortenPath(scope, cwd))
   const title = props.tool === 'Read'
     ? `Read: ${cleanText(shortenPath(resultPath || requestedPath, cwd))}`
-    : `${props.tool}: ${cleanText(textOf(input.pattern))} · ${cleanText(scope === cwd ? '.' : shortenPath(scope, cwd))}`
+    : `${props.tool}: ${cleanText(textOf(input.pattern))} · ${shownScope}`
+  const header = { title, titlePathStart: props.tool === 'Read' ? 6 : title.length - shownScope.length }
 
   if (props.output === undefined) {
-    if (props.isErrored) return { title, summary: 'Failed', failed: true, rows: [{ text: 'Failed', kind: 'error' }] }
-    if (props.isInterrupted) return { title, summary: 'Interrupted', rows: [{ text: 'Interrupted', kind: 'muted' }] }
+    if (props.isErrored) return { ...header, summary: 'Failed', failed: true, rows: [{ text: 'Failed', kind: 'error' }] }
+    if (props.isInterrupted) return { ...header, summary: 'Interrupted', rows: [{ text: 'Interrupted', kind: 'muted' }] }
     let summary: string | undefined
     if (props.tool === 'Read' && (input.offset !== undefined || input.limit !== undefined)) {
       const start = nonnegativeInteger(input.offset) && input.offset > 0 ? input.offset : 1
       const limit = nonnegativeInteger(input.limit) && input.limit > 0 ? input.limit : undefined
       summary = limit === undefined ? `lines ${start}–end` : `lines ${start}–${start + limit - 1}`
     }
-    return { title, summary, rows: [] }
+    return { ...header, summary, rows: [] }
   }
 
   // Error strings carry the complete diagnostic, even before isRunning clears.
   if (props.isErrored && typeof props.output === 'string') {
     const lines = linesOfText(props.output.replace(/<\/?tool_use_error>/g, ''))
     return {
-      title,
+      ...header,
       summary: 'Failed',
       failed: true,
       rows: (lines.length > 0 ? lines : ['Failed']).map(text => ({ text, kind: 'error' })),
@@ -128,7 +130,7 @@ export function formatFileTool(props: CallProps, cwd: string): CardContent | nul
       ? '0 lines'
       : file.numLines === 1 ? `line ${file.startLine}` : `lines ${file.startLine}–${file.startLine + file.numLines - 1}`
     return {
-      title,
+      ...header,
       summary: `${range} · ${file.totalLines} total lines${file.truncatedByTokenCap ? ' · truncated by token cap' : ''}`,
       rows: lines.map((text, index) => ({ text, number: startLine + index })),
       failed: props.isErrored,
@@ -141,9 +143,9 @@ export function formatFileTool(props: CallProps, cwd: string): CardContent | nul
   if (props.tool === 'Glob') {
     if (!stringArray(output.filenames)) return null
     return {
-      title,
+      ...header,
       summary: `${countLabel(output.numFiles, 'file')}${output.truncated ? ' · tool output truncated' : ''}`,
-      rows: output.filenames.map(path => ({ text: cleanText(shortenPath(path, cwd)) })),
+      rows: output.filenames.map(path => ({ text: cleanText(shortenPath(path, cwd)), kind: 'path' })),
       failed: props.isErrored,
     }
   }
@@ -170,9 +172,9 @@ export function formatFileTool(props: CallProps, cwd: string): CardContent | nul
   let summary: string
 
   if (mode === 'files_with_matches') {
-    rows = filenames.map(path => ({ text: cleanText(shortenPath(path, cwd)) }))
+    rows = filenames.map(path => ({ text: cleanText(shortenPath(path, cwd)), kind: 'path' }))
     if (lines.length > 0) {
-      if (filenames.length === 0) rows = lines.map(path => ({ text: shortenPath(path, cwd) }))
+      if (filenames.length === 0) rows = lines.map(path => ({ text: shortenPath(path, cwd), kind: 'path' }))
       else if (lines.length !== filenames.length || lines.some((line, index) => line !== cleanText(filenames[index]!))) {
         rows.push(...lines.map(text => ({ text })))
       }
@@ -195,7 +197,9 @@ export function formatFileTool(props: CallProps, cwd: string): CardContent | nul
       }
       matches += count
       countedRows += 1
-      return { text: pathCount ? `${shortenPath(pathCount[1]!, cwd)}:${pathCount[2]}` : text }
+      if (!pathCount) return { text }
+      const path = shortenPath(pathCount[1]!, cwd)
+      return { text: `${path}:${pathCount[2]}`, pathEnd: path.length }
     })
     const empty = lines.length === 0 && output.numFiles === 0 && !output.truncated
     const matchCount = nonnegativeInteger(output.numMatches) && output.numMatches > matches
@@ -207,7 +211,7 @@ export function formatFileTool(props: CallProps, cwd: string): CardContent | nul
     summary = completeCounts && (countedRows > 0 || empty || (lines.length === 0 && nonnegativeInteger(output.numMatches)))
       ? `${matchCount}${output.numFiles > 0 ? ` · ${fileCount}` : ''}`
       : countLabel(output.numFiles, 'file')
-    if (lines.length === 0 && filenames.length > 0) rows = filenames.map(path => ({ text: cleanText(shortenPath(path, cwd)) }))
+    if (lines.length === 0 && filenames.length > 0) rows = filenames.map(path => ({ text: cleanText(shortenPath(path, cwd)), kind: 'path' }))
   } else {
     if (typeof output.content !== 'string') return null
     const knownPaths: string[] = []
@@ -218,7 +222,7 @@ export function formatFileTool(props: CallProps, cwd: string): CardContent | nul
       }
     }
     rows = grepContentRows(lines, knownPaths, cwd, input['-n'] !== false)
-    if (lines.length === 0 && filenames.length > 0) rows = filenames.map(path => ({ text: cleanText(shortenPath(path, cwd)) }))
+    if (lines.length === 0 && filenames.length > 0) rows = filenames.map(path => ({ text: cleanText(shortenPath(path, cwd)), kind: 'path' }))
     const lineCount = nonnegativeInteger(output.numLines) ? output.numLines : lines.length
     const totalLines = nonnegativeInteger(output.totalLines) ? output.totalLines : lineCount
     summary = totalLines > lineCount
@@ -228,5 +232,5 @@ export function formatFileTool(props: CallProps, cwd: string): CardContent | nul
         : countLabel(lineCount, 'line')
   }
 
-  return { title, summary: summary + truncated, rows, failed: props.isErrored }
+  return { ...header, summary: summary + truncated, rows, failed: props.isErrored }
 }

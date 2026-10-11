@@ -15,6 +15,12 @@ Click **Show all** to expand long Bash, Read, Grep, or Glob output, and
 **Collapse** to restore its preview. Errors remain visible. Edit and Write
 retain their fixed diff previews.
 
+Peach bold tool labels, cyan paths, and softer ordinary output share one
+palette across all six tools. Shell commands distinguish commands, flags,
+and quoted strings. Inline timestamps and durations stay muted; standalone
+success, warning, and failure markers use green, amber, and red. Actual
+failures, stderr, and changed diff rows keep their colour precedence.
+
 ## Requirements
 
 - Claude Code 2.1.296 or later with mods enabled; verification uses 2.1.296
@@ -63,6 +69,7 @@ directly from their source folders.
 
 ```sh
 claude plugin update skins@hellosverre-mods
+claude plugin marketplace update omp-blocks
 claude plugin update omp-blocks@omp-blocks
 ```
 
@@ -96,6 +103,9 @@ if you also want to remove its styling.
 - Search pagination reports the tool's supplied totals; expansion cannot recover output the tool omitted
 - Tool-call expansion state is independent for each card
 - The palette matches OMP's dark Catppuccin-style cards; it does not follow light themes
+- Semantic highlighting preserves text and whitespace; status words never determine tool success or failure
+- Conservative lexical spans require no syntax-highlighter dependency; shell/read/search cards retain terminal-control sanitization
+- Inline highlighting has a node budget; remaining text stays visible in its base colour
 - Claude Code's renderer retains its own size and terminal limitations
 
 Mods run with Claude Code's access to your machine. Install only code you
@@ -134,8 +144,9 @@ claude --plugin-dir .
 ```
 
 The tests cover rendering, expansion transitions, native fallbacks, errors,
-line offsets, blank matches, and search pagination. [SPEC.md](SPEC.md)
-describes the renderer and live smoke checks.
+line offsets, blank matches, search pagination, lossless semantic spans,
+token boundaries, and colour precedence. [SPEC.md](SPEC.md) describes the
+renderer and live smoke checks.
 
 ## License
 

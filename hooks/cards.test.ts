@@ -1,5 +1,6 @@
 import type { On, RenderElement } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
+import { COLORS } from './text-style'
 
 const STOCK: RenderElement = { type: 'Text', props: {}, children: ['native rendering'] }
 const SITE = { plugin: 'omp-blocks', surface: 'terminal', component: 'ToolUse', viewport: { columns: 100, rows: 40 } } as const
@@ -103,4 +104,101 @@ test('background Bash keeps its native task controls', async ($, on) => {
   expect(await result.find({ type: 'Text', text: 'native rendering' })).toBeDefined()
   await use.unmount()
   await result.unmount()
+})
+
+test('semantic card spans preserve every displayed character and soften ordinary output', async ($, on) => {
+  setup(on)
+  const command = 'printf -- "%s" handoff/ready.md'
+  const text = '  12:34:56\tPASS  handoff/ready.md in 1.2s  '
+  const ui = await $.ui.mount({ ...SITE, requestId: 'semantic-bash', props: props('Bash', { command }, {
+    stdout: `${text}\nordinary output\nFAIL is stdout text\n`, stderr: '', interrupted: false,
+  }) })
+  expect(await ui.find({ type: 'Text', text: `Bash: ${command}` })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text })).toBeDefined()
+  expect((await ui.find({ type: 'Text', text: /^Bash$/ }))?.props.bold).toBe(true)
+  expect((await ui.find({ type: 'Text', text: /^printf$/ }))?.props.color).toBe(COLORS.command)
+  expect((await ui.find({ type: 'Text', text: /^--$/ }))?.props.color).toBe(COLORS.flag)
+  expect((await ui.find({ type: 'Text', text: /^"%s"$/ }))?.props.color).toBe(COLORS.quote)
+  expect((await ui.find({ type: 'Text', text: /^PASS$/ }))?.props.color).toBe(COLORS.add)
+  expect((await ui.find({ type: 'Text', text: /^12:34:56$/ }))?.props.color).toBe(COLORS.muted)
+  expect((await ui.find({ type: 'Text', text: 'ordinary output' }))?.props.color).toBe(COLORS.output)
+  expect((await ui.find({ type: 'Text', text: /^FAIL$/ }))?.props.color).toBe(COLORS.del)
+  expect((await ui.find({ type: 'Box' }))?.props.borderColor).toBe(COLORS.border)
+  await ui.unmount()
+})
+
+test('explicit failed calls and stderr retain red precedence over markers and paths', async ($, on) => {
+  setup(on)
+  const text = 'PASS handoff/ready.md WARN 1.2s'
+  for (const failed of [false, true]) {
+    const ui = await $.ui.mount({ ...SITE, requestId: `semantic-error-${failed}`, props: props('Bash', { command: 'check' }, {
+      stdout: failed ? text : '', stderr: failed ? '' : text, interrupted: false,
+    }, { isErrored: failed }) })
+    expect((await ui.find({ type: 'Text', text }))?.props.color).toBe(COLORS.del)
+    for (const span of await ui.findAll({ type: 'Text', text: /PASS|handoff\/ready\.md|WARN|1\.2s/ })) {
+      if (span.props.color !== undefined) expect(span.props.color).toBe(COLORS.del)
+    }
+    await ui.unmount()
+  }
+})
+
+test('authoritative file paths take precedence over status names and ambiguous scope separators', async ($, on) => {
+  setup(on)
+  const glob = await $.ui.mount({ ...SITE, requestId: 'semantic-glob', props: props('Glob', {
+    pattern: 'PASS · **/*', path: '/work/a · b',
+  }, { numFiles: 2, filenames: ['/work/PASS', '/work/a file'], truncated: false }) })
+  expect(await glob.find({ type: 'Text', text: 'Glob: PASS · **/* · a · b' })).toBeDefined()
+  expect((await glob.find({ type: 'Text', text: /^a · b$/ }))?.props.color).toBe(COLORS.path)
+  expect((await glob.find({ type: 'Text', text: /^PASS$/ }))?.props.color).toBe(COLORS.path)
+  expect((await glob.find({ type: 'Text', text: /^a file$/ }))?.props.color).toBe(COLORS.path)
+  await glob.unmount()
+  const read = await $.ui.mount({ ...SITE, requestId: 'semantic-read', props: props('Read', { file_path: '/work/PASS' }, {
+    type: 'text', file: { filePath: '/work/PASS', content: '\nPASS handoff/ready.md', startLine: 42, numLines: 2, totalLines: 43 },
+  }) })
+  expect((await read.find({ type: 'Text', text: /^PASS$/ }))?.props.color).toBe(COLORS.path)
+  expect(await read.find({ type: 'Text', text: /^42\s*$/ })).toBeDefined()
+  expect(await read.find({ type: 'Text', text: /^43\s*$/ })).toBeDefined()
+  expect(await read.find({ type: 'Text', text: ' ' })).toBeDefined()
+  await read.unmount()
+})
+
+test('artifact and counted filename ranges preserve their labels and numeric suffixes', async ($, on) => {
+  setup(on)
+  const bash = await $.ui.mount({ ...SITE, requestId: 'semantic-artifact', props: props('Bash', { command: 'check' }, {
+    stdout: '', stderr: '', persistedOutputPath: '/work/PASS with spaces', interrupted: false,
+  }) })
+  expect(await bash.find({ type: 'Text', text: 'Full output: PASS with spaces' })).toBeDefined()
+  expect((await bash.find({ type: 'Text', text: /^PASS with spaces$/ }))?.props.color).toBe(COLORS.path)
+  await bash.unmount()
+  const grep = await $.ui.mount({ ...SITE, requestId: 'semantic-count', props: props('Grep', { pattern: 'value', output_mode: 'count' }, {
+    mode: 'count', numFiles: 1, filenames: [], content: 'PASS:3',
+  }) })
+  expect((await grep.find({ type: 'Text', text: 'PASS:3' }))?.props.color).toBe(COLORS.muted)
+  expect((await grep.find({ type: 'Text', text: /^PASS$/ }))?.props.color).toBe(COLORS.path)
+  await grep.unmount()
+})
+
+test('long semantic lines keep their unstyled tail after the span limit', async ($, on) => {
+  setup(on)
+  const text = `${'PASS handoff/ready.md '.repeat(40)}untouched tail  `
+  const ui = await $.ui.mount({ ...SITE, requestId: 'semantic-budget', props: props('Bash', { command: 'check' }, {
+    stdout: text, stderr: '', interrupted: false,
+  }) })
+  expect(await ui.find({ type: 'Text', text })).toBeDefined()
+  await ui.unmount()
+})
+
+test('semantic spans retain output that fits near the serialized tree limit', async ($, on) => {
+  setup(on)
+  const text = `${'PASS '.repeat(24)}${'x'.repeat(98500)}`
+  const bash = await $.ui.mount({ ...SITE, requestId: 'semantic-tree-bash', props: props('Bash', { command: 'check' }, {
+    stdout: text, stderr: '', interrupted: false,
+  }) })
+  expect(await bash.find({ type: 'Text', text })).toBeDefined()
+  await bash.unmount()
+  const edit = await $.ui.mount({ ...SITE, requestId: 'semantic-tree-edit', props: props('Edit', {}, {
+    filePath: '/work/a.ts', structuredPatch: [{ oldStart: 1, newStart: 1, lines: [` ${text}`] }],
+  }) })
+  expect(await edit.find({ type: 'Text', text })).toBeDefined()
+  await edit.unmount()
 })

@@ -49,10 +49,10 @@ export function formatBash(props: CallProps, cwd: string): CardContent | null {
 
   // Artifact paths precede stream rows so the collapsed preview retains them.
   if (persistedPath !== '') {
-    rows.push({ text: `Full output: ${cleanText(shortenPath(persistedPath, cwd))}`, kind: 'muted' })
+    rows.push({ text: `Full output: ${cleanText(shortenPath(persistedPath, cwd))}`, kind: 'muted', pathStart: 13 })
   }
   if (rawPath !== '' && rawPath !== persistedPath) {
-    rows.push({ text: `Raw output: ${cleanText(shortenPath(rawPath, cwd))}`, kind: 'muted' })
+    rows.push({ text: `Raw output: ${cleanText(shortenPath(rawPath, cwd))}`, kind: 'muted', pathStart: 12 })
   }
 
   const stdoutLines = linesOfText(stdout)

@@ -1,11 +1,16 @@
 export type CardRow = {
   text: string
   number?: number
-  kind?: 'text' | 'muted' | 'error' | 'heading'
+  kind?: 'text' | 'muted' | 'error' | 'heading' | 'path'
+  // Authoritative path bounds use string offsets; omitted bounds reach the edge.
+  pathStart?: number
+  pathEnd?: number
 }
 
 export type CardContent = {
   title: string
+  // Keep scope boundaries exact even when patterns and paths contain separators.
+  titlePathStart?: number
   summary?: string
   rows: CardRow[]
   failed?: boolean

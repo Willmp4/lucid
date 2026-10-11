@@ -78,7 +78,7 @@ test('Glob returns every filename and reports the engine count and truncation', 
   expect(card?.title).toBe('Glob: **/*.ts · src')
   expect(card?.summary).toMatch(/90 files.*truncated/)
   expect(card?.rows).toHaveLength(40)
-  expect(card?.rows[39]).toEqual({ text: 'file-39.ts' })
+  expect(card?.rows[39]).toEqual({ text: 'file-39.ts', kind: 'path' })
 })
 
 test('Glob reports zero files without fabricating matches', () => {
@@ -158,7 +158,7 @@ test('Grep files mode uses the completed mode and retains every returned filenam
     mode: 'files_with_matches', filenames: ['/work/a.ts', '/work/b.ts'], numFiles: 2, numLines: 0, content: '',
   }), '/work')
   expect(card?.summary).toBe('2 files')
-  expect(card?.rows).toEqual([{ text: 'a.ts' }, { text: 'b.ts' }])
+  expect(card?.rows).toEqual([{ text: 'a.ts', kind: 'path' }, { text: 'b.ts', kind: 'path' }])
 })
 
 test('Grep count mode keeps colon filenames and sums only known counts', () => {
@@ -166,7 +166,7 @@ test('Grep count mode keeps colon filenames and sums only known counts', () => {
     mode: 'count', filenames: [], numFiles: 2, numLines: 2, content: '/work/a:part.ts:3\n/work/b.ts:2',
   }), '/work')
   expect(card?.summary).toBe('5 matches · 2 files')
-  expect(card?.rows).toEqual([{ text: 'a:part.ts:3' }, { text: 'b.ts:2' }])
+  expect(card?.rows).toEqual([{ text: 'a:part.ts:3', pathEnd: 9 }, { text: 'b.ts:2', pathEnd: 4 }])
   const raw = formatFileTool(call('Grep', { pattern: 'value', output_mode: 'count' }, {
     mode: 'count', filenames: [], numFiles: 1, numLines: 1, content: 'unknown count data',
   }), '/work')

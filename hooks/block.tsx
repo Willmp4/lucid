@@ -1,24 +1,10 @@
 import type { ElementTable } from 'claude-code'
+import { COLORS, drawInline, drawWithinLimit } from './text-style'
 
-// An Edit or Write call as one bordered block: a header naming the tool, the
-// path and the change counts, then a line-numbered diff. Colours are the OMP
-// dark-catppuccin theme's; the row shading is Catppuccin Mocha's delta theme.
+// One bordered Edit or Write block with a shared OMP dark Catppuccin palette.
+// Changed rows keep Catppuccin Mocha's delta shading and colour precedence.
 
 export const EDIT_TOOLS: ReadonlySet<string> = new Set(['Edit', 'Write'])
-
-export const COLORS = {
-  border: '#45475a',
-  borderErr: '#f38ba8',
-  name: '#fab387',
-  path: '#cdd6f4',
-  muted: '#7f849c',
-  dim: '#6c7086',
-  add: '#a6e3a1',
-  addBg: '#394545',
-  del: '#f38ba8',
-  delBg: '#53394c',
-  warn: '#f9e2af',
-} as const
 
 export const DIFF_CAP = 40
 export const NEW_FILE_CAP = 20
@@ -201,6 +187,10 @@ const isLine = (row: Row): row is LineRow => row.kind === 'add' || row.kind === 
 export function drawBlock(ui: ElementTable<'terminal'>, block: Block) {
   const { Box, Text } = ui
   const gutter = Math.max(0, ...block.rows.filter(isLine).map(row => row.number.length))
+  const textLength = block.rows.reduce(
+    (length, row) => length + ('text' in row ? row.text.length : 0),
+    block.path.length + block.tool.length,
+  )
 
   const header = (
     <Box key="head" flexDirection="row" width="100%">
@@ -228,74 +218,76 @@ export function drawBlock(ui: ElementTable<'terminal'>, block: Block) {
     </Box>
   )
 
-  const rows = block.rows.map((row, index) => {
-    const key = `r${index}`
+  return drawWithinLimit(inlineBudget => {
+    const rows = block.rows.map((row, index) => {
+      const key = `r${index}`
 
-    if (row.kind === 'gap') {
+      if (row.kind === 'gap') {
+        return (
+          <Box key={key} width="100%">
+            <Text color={COLORS.muted}>…</Text>
+          </Box>
+        )
+      }
+
+      if (row.kind === 'more') {
+        return (
+          <Box key={key} width="100%">
+            <Text color={COLORS.muted}>
+              … {row.count} more {row.count === 1 ? 'line' : 'lines'}
+            </Text>
+          </Box>
+        )
+      }
+
+      if (row.kind === 'note') {
+        return (
+          <Box key={key} width="100%">
+            <Text color={row.color} wrap="wrap">
+              {row.text}
+            </Text>
+          </Box>
+        )
+      }
+
+      const isChange = row.kind !== 'ctx'
+      const color = row.kind === 'add' ? COLORS.add : row.kind === 'del' ? COLORS.del : COLORS.muted
+      const background = row.kind === 'add' ? COLORS.addBg : row.kind === 'del' ? COLORS.delBg : undefined
+      const [dots, rest] = isChange ? splitIndent(row.text) : ['', row.text]
+      const shown = dots === '' && rest === '' ? ' ' : rest
+
       return (
-        <Box key={key} width="100%">
-          <Text color={COLORS.muted}>…</Text>
+        <Box key={key} flexDirection="row" width="100%" backgroundColor={background}>
+          <Box width={gutter + 2} flexShrink={0}>
+            <Text color={isChange ? color : COLORS.dim} backgroundColor={background}>
+              {row.number.padStart(gutter)}
+            </Text>
+          </Box>
+          <Box flexGrow={1}>
+            <Text color={color} backgroundColor={background} wrap="wrap">
+              {dots === '' ? null : (
+                <Text color={COLORS.dim} backgroundColor={background}>
+                  {dots}
+                </Text>
+              )}
+              {isChange ? shown : drawInline(ui, shown, 'output', inlineBudget)}
+            </Text>
+          </Box>
         </Box>
       )
-    }
-
-    if (row.kind === 'more') {
-      return (
-        <Box key={key} width="100%">
-          <Text color={COLORS.muted}>
-            … {row.count} more {row.count === 1 ? 'line' : 'lines'}
-          </Text>
-        </Box>
-      )
-    }
-
-    if (row.kind === 'note') {
-      return (
-        <Box key={key} width="100%">
-          <Text color={row.color} wrap="wrap">
-            {row.text}
-          </Text>
-        </Box>
-      )
-    }
-
-    const isChange = row.kind !== 'ctx'
-    const color = row.kind === 'add' ? COLORS.add : row.kind === 'del' ? COLORS.del : COLORS.muted
-    const background = row.kind === 'add' ? COLORS.addBg : row.kind === 'del' ? COLORS.delBg : undefined
-    const [dots, rest] = isChange ? splitIndent(row.text) : ['', row.text]
-    const shown = dots === '' && rest === '' ? ' ' : rest
+    })
 
     return (
-      <Box key={key} flexDirection="row" width="100%" backgroundColor={background}>
-        <Box width={gutter + 2} flexShrink={0}>
-          <Text color={isChange ? color : COLORS.dim} backgroundColor={background}>
-            {row.number.padStart(gutter)}
-          </Text>
-        </Box>
-        <Box flexGrow={1}>
-          <Text color={color} backgroundColor={background} wrap="wrap">
-            {dots === '' ? null : (
-              <Text color={COLORS.dim} backgroundColor={background}>
-                {dots}
-              </Text>
-            )}
-            {shown}
-          </Text>
-        </Box>
+      <Box
+        flexDirection="column"
+        width="100%"
+        borderStyle="round"
+        borderColor={block.isErrored ? COLORS.borderErr : COLORS.border}
+        paddingX={1}
+      >
+        {header}
+        {rows}
       </Box>
     )
-  })
-
-  return (
-    <Box
-      flexDirection="column"
-      width="100%"
-      borderStyle="round"
-      borderColor={block.isErrored ? COLORS.borderErr : COLORS.border}
-      paddingX={1}
-    >
-      {header}
-      {rows}
-    </Box>
-  )
+  }, textLength, block.rows.length)
 }

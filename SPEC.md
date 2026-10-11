@@ -25,8 +25,8 @@ Out of scope:
 - Unsupported tools and unknown result formats, which pass through to skins
 - The `desktop`, `vscode`, and `mobile` surfaces, which pass through
 - Image, PDF, notebook, and background-command payloads, which keep native UI
-- Expand/collapse controls for Edit/Write diffs, syntax highlighting, and
-  word-level emphasis
+- Expand/collapse controls for Edit/Write diffs and full programming-language
+  syntax highlighting
 - Reading the skins palette; this mod's colours are fixed
 - Voice output, parked for a later design
 
@@ -45,6 +45,8 @@ installations use Claude Code's plugin cache.
 | `hooks/block.test.ts` | Tests for `block.tsx` and the pass-through rules |
 | `hooks/card-model.ts` | Shared card rows and terminal text sanitization |
 | `hooks/tool-card.tsx` | Card frame, previews, and expansion controls |
+| `hooks/text-style.tsx` | Shared palette, conservative lexical spans, and bounded inline rendering |
+| `hooks/text-style.test.ts` | Token boundaries, shell quoting, lossless offsets, and span-budget boundaries |
 | `hooks/bash-card.ts` | Shell output, failures, and artifact links |
 | `hooks/file-cards.ts` | Read, Grep, and Glob result formatting |
 | `hooks/cards.test.ts` | Rendered content, fallback, and expansion transitions |
@@ -110,6 +112,47 @@ tool never returned.
 Native rendering remains responsible for nontext Read results, background
 Bash tasks, and unsupported structured payloads.
 
+## Semantic colour hierarchy
+
+All six tools use one fixed OMP dark Catppuccin palette:
+
+| Content | Colour | Behavior |
+|---|---|---|
+| Tool label | Peach `#fab387` | Bold; the label, not the whole command, carries emphasis |
+| Ordinary output | Softer `#a6adc8` | Default for shell, read, and search text |
+| Path or filename | Cyan `#89dceb` | Known tool paths take precedence over words such as `PASS` in filenames |
+| Shell command | Mauve `#cba6f7` | Command position in Bash headers and explicit `$ ` output prompts |
+| Shell flag | Blue `#89b4fa` | Unquoted flags; `--` ends flag recognition |
+| Quoted shell string | Amber `#f9e2af` | Closed single- or double-quoted strings, including their quotes |
+| Date, timestamp, or duration | Muted `#7f849c` | ISO-style dates/timestamps, clock times, and `ms`, `s`, `m`, or `h` durations |
+| Line number | Dim `#6c7086` | Existing read/search and diff-context gutters |
+| Success marker | Green `#a6e3a1` | Standalone `PASS`, `PASSED`, `SUCCESS`, `SUCCEEDED`, or `OK` |
+| Warning marker | Amber `#f9e2af` | Standalone `WARN`, `WARNING`, or `Interrupted` |
+| Failure marker | Red `#f38ba8` | Standalone `FAIL`, `FAILED`, `ERROR`, `FATAL`, or `Failed` |
+
+Recognition stays lexical, not a programming-language or shell interpreter.
+Paths use explicit path shapes, common filename extensions, and known
+filenames. Words embedded in identifiers, larger words, filenames, or URLs
+do not become status markers. File-tool rows retain authoritative path
+bounds, including paths with spaces or separator characters.
+
+Status words colour text only; they never determine call success or failure.
+Failed calls and stderr remain red across their entire rows. Diff additions
+and removals retain their green/red text and shaded backgrounds. Only
+context text receives inline semantic spans inside Edit/Write bodies.
+
+Inline lexical highlighting adds at most 24 spans per line and uses a
+128-child-node budget per card, including styled shell/read/search headers.
+Filename-row colours and the existing Edit/Write headers add no lexical
+spans. Near the host's 100,000-character serialized-tree limit, the renderer
+reserves headroom from an unsplit base tree before adding spans. If styling
+cannot fit, the base tree keeps the same text and controls. Short cards
+avoid the extra serialization. Remaining text keeps its original characters
+and base colour after a limit. Plain text adds no span arrays or styled nodes.
+Whitespace, blank lines, offsets, wrapping, row caps, expansion state,
+sanitization, native fallback, and tool inputs/results remain unchanged.
+The renderer introduces no ANSI passthrough or external dependency.
+
 ## Edit and Write blocks
 
 ### Frame
@@ -123,7 +166,7 @@ Bash tasks, and unsupported structured payloads.
 One row: `✎ `, the tool name, `: `, the path, two spaces, and the counts.
 
 - Tool name: `#fab387`, bold
-- Path: `#cdd6f4`. A path inside the session's working directory shows
+- Path: `#89dceb`. A path inside the session's working directory shows
   relative to it. Any other path replaces a leading `/Users/<name>` or
   `/home/<name>` with `~`
 - The path comes from `output.filePath` once the call resolves, and from
@@ -213,6 +256,12 @@ The background shading of these colours comes from the Catppuccin Mocha
 The card suites cover returned line offsets, blank lines, trustworthy Grep
 grouping, ambiguous search text, pagination, native fallback, failure
 visibility, and independent expand/collapse transitions.
+
+Semantic tests cover whole-token boundaries, escaped and incomplete shell
+quotes, exact filename/scope bounds, UTF-16 offsets, unstyled text beyond
+span and serialized-size budgets, and error/diff colour precedence.
+Rendered-text queries use exact matches for individual styles; precedence
+checks permit nested or inherited spans but reject conflicting colours.
 
 Verification before reporting completion:
 

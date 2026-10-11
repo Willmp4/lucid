@@ -1,7 +1,8 @@
 import type { On, RenderElement } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
 
-import { COLORS, blockOf, countsOf, diffRows, hunksOf, shortenPath } from './block'
+import { blockOf, countsOf, diffRows, hunksOf, shortenPath } from './block'
+import { COLORS } from './text-style'
 
 const STOCK: RenderElement = { type: 'Text', props: {}, children: ['stock row'] }
 
@@ -140,4 +141,45 @@ test('other tools and other surfaces keep the row beneath', async ($, on) => {
   const desktop = await $.ui.mount({ ...SITE, surface: 'desktop', component: 'ToolUse', requestId: 'tu3', props: call('Edit', {}, { output: EDIT_OUTPUT }) })
   expect(await desktop.find({ type: 'Text', text: 'stock row' })).toBeDefined()
   await desktop.unmount()
+})
+
+test('diff changes and error notes keep precedence over inline markers and filenames', async ($, on) => {
+  stub(on)
+  const text = 'PASS handoff/ready.md WARN 1.2s'
+  const row = await $.ui.mount({ ...SITE, surface: 'terminal', component: 'ToolUse', requestId: 'semantic-edit', props: call('Edit', {}, {
+    output: { filePath: '/work/FAIL', structuredPatch: [
+      { oldStart: 1, newStart: 1, lines: [`-${text} removed`, `+${text} added`, ' context handoff/ready.md'] },
+    ] },
+  }) })
+  expect((await row.find({ type: 'Text', text: /^FAIL$/ }))?.props.color).toBe(COLORS.path)
+  expect((await row.find({ type: 'Box', key: 'r0' }))?.props.backgroundColor).toBe(COLORS.delBg)
+  expect((await row.find({ type: 'Box', key: 'r1' }))?.props.backgroundColor).toBe(COLORS.addBg)
+  expect((await row.find({ type: 'Text', text: `${text} removed` }))?.props.color).toBe(COLORS.del)
+  expect((await row.find({ type: 'Text', text: `${text} added` }))?.props.color).toBe(COLORS.add)
+  expect(await row.find({ type: 'Text', text: 'context handoff/ready.md' })).toBeDefined()
+  expect((await row.find({ type: 'Text', text: /^handoff\/ready\.md$/ }))?.props.color).toBe(COLORS.path)
+  await row.unmount()
+  const failed = await $.ui.mount({ ...SITE, surface: 'terminal', component: 'ToolUse', requestId: 'semantic-edit-failed', props: call('Edit', {}, {
+    isErrored: true, output: `<tool_use_error>${text}</tool_use_error>`,
+  }) })
+  expect((await failed.find({ type: 'Text', text }))?.props.color).toBe(COLORS.del)
+  for (const span of await failed.findAll({ type: 'Text', text: /PASS|handoff\/ready\.md|WARN|1\.2s/ })) {
+    if (span.props.color !== undefined) expect(span.props.color).toBe(COLORS.del)
+  }
+  await failed.unmount()
+})
+
+test('changed diff text cannot receive an inline colour override', async ($, on) => {
+  stub(on)
+  const text = 'PASS handoff/ready.md WARN 1.2s'
+  for (const [prefix, color] of [['-', COLORS.del], ['+', COLORS.add]]) {
+    const row = await $.ui.mount({ ...SITE, surface: 'terminal', component: 'ToolUse', requestId: `semantic-change-${prefix}`, props: call('Edit', {}, {
+      output: { filePath: '/work/a.ts', structuredPatch: [{ oldStart: 1, newStart: 1, lines: [`${prefix}${text}`] }] },
+    }) })
+    expect((await row.find({ type: 'Text', text }))?.props.color).toBe(color)
+    for (const span of await row.findAll({ type: 'Text', text: /PASS|handoff\/ready\.md|WARN|1\.2s/ })) {
+      if (span.props.color !== undefined) expect(span.props.color).toBe(color)
+    }
+    await row.unmount()
+  }
 })
