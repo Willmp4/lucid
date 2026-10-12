@@ -51,6 +51,8 @@ sessions.
 | `/omp density full` | Cards show their full previews, and every run of calls draws one card per call |
 | `/omp density blackbox` | Each run of tool calls folds into one block that opens on click; Claude's text between runs ends a block |
 | `/omp density` | Shows the current level |
+| `/omp voice <name>` | Speech uses the system voice of that exact name, such as `Daniel` or `Eddy (English (US))`. The default is `Samantha` |
+| `/omp voice` | Shows the current voice |
 
 The density level sets each card's body:
 
@@ -126,7 +128,7 @@ Two keywords in a prompt act on Claude's reply instead of reaching Claude:
 | Keyword | Effect |
 |---|---|
 | `tldr` or `tl;dr` | Folds the reply to a summary of one to three lines that Claude Haiku writes. **Show ▸** opens the reply under the summary, and **Collapse** folds it again |
-| `speak` | Reads the reply aloud with the system synthesizer, one sentence at a time |
+| `speak` | Reads the reply aloud with the system synthesizer, one sentence at a time, in the voice `/omp voice` sets |
 
 A keyword counts in any letter case, as a whole word, and only at the start
 or the end of the prompt, so `speak` inside a sentence stays an ordinary word.
@@ -151,8 +153,10 @@ rainbow colours.
   a bare URL as "link". `tldr speak` reads the summary, or the reply when the
   summary fails
 - The next prompt you send stops a reading after the sentence it is speaking
-- Speech uses the system's default voice (`say` on macOS). When the
-  synthesizer fails, a `Speech failed:` toast shows the cause
+- Speech uses the system synthesizer (`say` on macOS) with the voice that
+  `/omp voice` sets, `Samantha` by default. To list the installed voices, run
+  `say -v '?'` in your shell. When the synthesizer fails, for example because
+  the voice is not installed, a `Speech failed:` toast shows the cause
 - Only prompts you type count; prompts from other mods, peers, and the SDK
   pass unchanged
 - Each keyword acts on one reply. After `/clear`, a keyword alone finds no

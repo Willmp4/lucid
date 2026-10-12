@@ -1,6 +1,6 @@
 {
   "name": "omp-blocks",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Draws file edits, shell commands, reads, and searches as OMP-style bordered tool cards at a chosen density or folds each run of calls into a block that Claude's text ends, wraps reply tables, draws long reply code blocks in colour, folds a reply to a summary or reads it aloud on a prompt keyword, and places the usage meters",
   "homepage": "https://github.com/Willmp4/omp-blocks",
   "repository": "https://github.com/Willmp4/omp-blocks",

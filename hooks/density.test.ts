@@ -57,21 +57,21 @@ test('/omp density reports the level, sets one, and refuses an unknown one', asy
   expect(store.get('density')).toBe('compact')
 })
 
-test('/omp with no known setting lists both settings', async ($, on) => {
+test('/omp with no known setting lists every setting', async ($, on) => {
   setup(on)
   for (const args of ['', 'colour red']) {
-    expect(await $.command.run(omp(args))).toMatchObject({ text: 'usage: /omp usage above|below, or /omp density full|balanced|compact|blackbox' })
+    expect(await $.command.run(omp(args))).toMatchObject({ text: 'usage: /omp usage above|below, /omp density full|balanced|compact|blackbox, or /omp voice <name>' })
   }
   expect(await $.command.run(omp('usage'))).toMatchObject({ text: 'usage meters: above the prompt' })
 })
 
-test('the command names both settings when it registers', async ($, on) => {
+test('the command names every setting when it registers', async ($, on) => {
   const { commands } = setup(on)
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
   expect(commands).toEqual([expect.objectContaining({
     name: 'omp',
-    description: 'omp-blocks settings: /omp usage above|below, /omp density full|balanced|compact|blackbox',
-    argumentHint: 'usage above|below | density full|balanced|compact|blackbox',
+    description: 'omp-blocks settings: /omp usage above|below, /omp density full|balanced|compact|blackbox, /omp voice <name>',
+    argumentHint: 'usage above|below | density full|balanced|compact|blackbox | voice <name>',
   })])
 })
 

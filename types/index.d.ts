@@ -57,6 +57,7 @@ declare module 'claude-code' {
       tldr: StateFamily<Summary>
       tldrOpen: StateFamily<boolean>
       speech: number
+      voice: string
     }
   }
 }

@@ -32,6 +32,7 @@ In scope:
 - The reading keywords `tldr` and `speak`: their highlight in the prompt box,
   their removal from the prompt, a reply's TLDR fold, and speech through the
   system synthesizer
+- The speech voice, set by `/omp voice`
 - The `terminal` surface
 
 Out of scope:
@@ -44,7 +45,8 @@ Out of scope:
   syntax highlighting
 - Reading the skins palette; this mod's colours are fixed
 - A reading mode that persists across turns; each keyword acts on one reply
-- A choice of voice; speech uses the synthesizer's default voice
+- Checking the name `/omp voice` stores against the installed voices; a voice
+  that is not installed fails at the first sentence it reads
 - Folding a reply that scrolled away before its keyword-only `tldr` arrived;
   that summary draws as a row of its own instead
 
@@ -71,6 +73,8 @@ installations use Claude Code's plugin cache.
 | `hooks/shell-command.test.ts` | The splitter, wrapper stripping, the classifier, run names, and targets |
 | `hooks/blackbox.test.ts` | The `blackbox` level: the setting, the turn model and its blocks, the blocks drawn through session events, background jobs, line widths, and error lines |
 | `hooks/density.test.ts` | Level parsing, the command, persistence, and the reload after `/clear` |
+| `hooks/voice.ts` | `/omp voice` parsing and the stored voice |
+| `hooks/voice.test.ts` | Voice parsing, the command, persistence, and the reload after `/clear`, `/resume`, and `/branch` |
 | `hooks/levels.test.ts` | Each level's cards, merged groups and their fallbacks, compact expansion, failures, and caps |
 | `hooks/text-style.tsx` | Shared palette, conservative lexical spans, and bounded inline rendering |
 | `hooks/text-style.test.ts` | Token boundaries, shell quoting, lossless offsets, and span-budget boundaries |
@@ -89,11 +93,11 @@ installations use Claude Code's plugin cache.
 | `hooks/tldr-block.tsx` | The TLDR block: folded, open, pending, and failed. Named apart from `tldr.ts`, since one import path cannot name both |
 | `hooks/speech.ts` | Pure functions: reply markdown to sentences for speech |
 | `hooks/speech.test.ts` | Markdown stripping, sentence splits, and the utterance length cap |
-| `hooks/reading.test.ts` | The keywords through session events: marks, the fold, the previous reply, speech order and stopping, and failures |
+| `hooks/reading.test.ts` | The keywords through session events: marks, the fold, the previous reply, speech order, voice, and stopping, and failures |
 | `hooks/usage.ts` | Meter figures and `/omp usage` parsing |
 | `hooks/usage-line.tsx` | The meter line drawn under the prompt |
 | `hooks/usage.test.ts` | Meter text, the command, placement persistence, and both slots |
-| `types/index.d.ts` | Per-call expansion, opening, and splitting; elapsed time; usage placement; density; meter; turn-record; and reading state declarations |
+| `types/index.d.ts` | Per-call expansion, opening, and splitting; elapsed time; usage placement; density; meter; turn-record; reading state; and voice declarations |
 
 The mod keeps expansion, compact opening, merged-group splitting, and Bash
 duration in `$.state` families keyed by the render request ID: a tool
@@ -152,10 +156,11 @@ whole payload through **Show all**, and through **Show ▸** first at
 `/omp density full|balanced|compact|blackbox` stores the level under the
 store key `density` and holds it in the `density` atom. `session.start` and
 `classic.SessionStart` with the sources `clear`, `resume`, and `fork` load
-it, as they load the usage placement. A stored value other than the four
-levels reads as `balanced`, the default. `/omp density` reports the level; a
-typed value other than the four levels shows the usage line and changes
-nothing. `/omp` with neither setting's name shows one usage line for both.
+it, as they load the usage placement and the voice. A stored value other
+than the four levels reads as `balanced`, the default. `/omp density`
+reports the level; a typed value other than the four levels shows the usage
+line and changes nothing. `/omp` with no setting's name shows one usage line
+for all three settings: `usage`, `density`, and `voice`.
 
 | Level | Purpose |
 |---|---|
@@ -704,8 +709,8 @@ The text for speech comes from the reply's markdown:
   whitespace, and at every blank line, heading, and list item. A sentence over 4,096 characters, the
   synthesizer's cap, splits at the last whitespace under it
 
-Sentences play in order, one `$.audio.speak` call each, with the default
-voice. A `speech` counter holds the current reading. A `composer` prompt and
+Sentences play in order, one `$.audio.speak` call each, in the stored voice.
+A `speech` counter holds the current reading. A `composer` prompt and
 another reading each advance it, and a reading stops before any sentence whose
 counter value is out of date. One reading plays at a time.
 
@@ -716,8 +721,24 @@ counter value is out of date. One reading plays at a time.
 | Keyword-only `speak` | `lastReply`, at once |
 | Keyword-only `tldr speak` | The summary of `lastReply`, once it is ready |
 
-A rejected `speak` call stops the reading and shows a toast: `Speech failed:
-<cause>`. A reply with no text left after stripping plays nothing.
+A rejected `speak` call, such as one whose voice is not installed, stops the
+reading and shows a toast: `Speech failed: <cause>`. A reply with no text left
+after stripping plays nothing.
+
+### Voice
+
+`/omp voice <name>` stores the voice under the store key `voice` and holds it
+in the `voice` atom. The name is the system voice's exact name, as typed: it
+keeps its letter case and the spaces inside it, so `/omp voice Eddy (English
+(US))` stores `Eddy (English (US))`, and only the whitespace at its edges
+drops. `/omp voice` reports the voice. `session.start` and
+`classic.SessionStart` with the sources `clear`, `resume`, and `fork` load
+it, as they load the usage placement and the density. A stored value that is
+blank or not a string reads as `Samantha`, the default.
+
+Every `$.audio.speak` call passes the voice. Without one, macOS `say` takes
+the voice selected in the system settings, and on a Mac where no voice is
+selected it renders a few milliseconds of silence for each sentence.
 
 ### State
 
@@ -731,6 +752,7 @@ A rejected `speak` call stops the reading and shows a toast: `Speech failed:
 | `tldr` | reply row | `pending`, `ready`, or `failed` |
 | `tldrOpen` | reply row | Whether the block is open |
 | `speech` | none | The current reading's counter |
+| `voice` | none | The voice each `speak` call passes |
 
 `/clear`, `/resume`, and `/branch` reset `$.state`. After them, a
 keyword-only prompt finds no previous reply until Claude answers again.
@@ -807,8 +829,13 @@ drops and their reasons, no previous reply, each TLDR state and the
 the six-line cut, a summary that fails or times out, an aborted turn, the
 previous reply's `$.ui.log` row, speech order, a prompt that stops a reading
 after its sentence, `tldr speak` with a ready and a failed summary, a
-rejected `speak` call, subagent turns, prompts from other origins, and the
-desktop surface.
+rejected `speak` call, the voice each `speak` call passes by default, after
+`/omp voice`, and after `/clear`, a voice that is not installed, subagent
+turns, prompts from other origins, and the desktop surface.
+
+`hooks/voice.test.ts` covers voice parsing, the command's replies, store
+persistence, the fallback for a blank or non-string stored value, and the
+reload at session start and after `/clear`, `/resume`, and `/branch`.
 
 `hooks/usage.test.ts` covers the meter line, the command's replies, store
 persistence, the band hidden and restored, a survey keeping the band, the

@@ -13,15 +13,19 @@ const SUMMARY = 'The cache expires after an hour and the tests pass.\nShould the
 type Answer<T> = T | { deny: string }
 type Options = {
   model?: (e: ModelCompleteInput) => Answer<ModelCompleteResult> | Promise<Answer<ModelCompleteResult>>
-  speak?: (text: string, index: number) => void | { deny: string } | Promise<void>
+  speak?: (text: string, index: number, voice?: string) => void | { deny: string } | Promise<void>
 }
 
-// The engine beneath the mod: the prompt, the model, the synthesizer, and the transcript's
-// log and toasts, each recorded.
+// The engine beneath the mod: the store, the prompt, the model, the synthesizer and the voice
+// it was asked for, and the transcript's log and toasts, each recorded.
 function setup(on: On, options: Options = {}) {
   const clock: MockClock = mock.clock(on, { now: 1000 })
-  on('store.get', () => ({ value: undefined }))
-  on('store.set', () => ({ value: undefined }))
+  const store = new Map<string, unknown>()
+  on('store.get', (_$, e) => ({ value: store.get(e.key) }))
+  on('store.set', (_$, e) => {
+    store.set(e.key, e.value)
+    return { value: undefined }
+  })
   on('session.cwd', () => ({ value: '/work' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 200000 }, rateLimits: [] } }))
   on('turn.start', (_$, e) => ({ turnId: e.turnId }))
@@ -38,9 +42,11 @@ function setup(on: On, options: Options = {}) {
     return 'deny' in result ? result : { value: result }
   })
   const spoken: string[] = []
+  const voices: (string | undefined)[] = []
   on('audio.speak', async (_$, e) => {
     spoken.push(e.text)
-    const refused = await options.speak?.(e.text, spoken.length - 1)
+    voices.push(e.voice)
+    const refused = await options.speak?.(e.text, spoken.length - 1, e.voice)
     return refused ?? { value: { via: 'system' as const } }
   })
   const logs: string[] = []
@@ -54,9 +60,13 @@ function setup(on: On, options: Options = {}) {
     return { value: undefined }
   })
   on('ui.render', () => STOCK)
-  return { clock, received, requests, spoken, logs, toasts }
+  return { clock, store, received, requests, spoken, voices, logs, toasts }
 }
 
+// What `/omp <args>` typed at the prompt raises.
+const omp = (args: string) => ({
+  command: 'omp', args, origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 100 },
+})
 const typed = (text: string, turnId?: string) => ({ text, wait: false, origin: { kind: 'composer' as const }, ...(turnId === undefined ? {} : { turnId }) })
 const say = ($: Engine, uuid: string, text: string, agentId?: string) => $.session.append({
   message: { type: 'assistant', role: 'assistant', content: [{ type: 'text', text }] },
@@ -357,6 +367,52 @@ test('a rejected speak call stops the reading and shows a toast', async ($, on) 
   expect(spoken).toHaveLength(1)
   expect(toasts).toHaveLength(1)
   expect(toasts[0]).toMatch(/^Speech failed: .*no synthesizer/)
+})
+
+// The voice.
+
+test('each sentence goes to the synthesizer with Samantha, the default voice', async ($, on) => {
+  const { clock, spoken, voices } = setup(on)
+  await turn($, 't1', 'explain the cache. speak')
+  await clock.settle()
+  expect(spoken).toHaveLength(3)
+  expect(voices).toEqual(['Samantha', 'Samantha', 'Samantha'])
+  await $.prompt.submit(typed('speak'))
+  await clock.settle()
+  expect(voices).toEqual(Array(6).fill('Samantha'))
+})
+
+test('/omp voice sets the voice of every later reading, the summary\'s too', async ($, on) => {
+  const { clock, store, voices } = setup(on)
+  expect(await $.command.run(omp('voice Eddy (English (US))'))).toMatchObject({ text: 'speech voice: Eddy (English (US))' })
+  expect(store.get('voice')).toBe('Eddy (English (US))')
+  await turn($, 't1', 'explain the cache. speak')
+  await clock.settle()
+  await $.prompt.submit(typed('tldr speak'))
+  await clock.settle()
+  expect(voices).toEqual(Array(5).fill('Eddy (English (US))'))
+})
+
+test('a /clear reloads the stored voice for the next reading', async ($, on) => {
+  const { clock, store, voices } = setup(on)
+  on('classic.SessionStart', () => ({}))
+  store.set('voice', 'Daniel')
+  await $.classic.SessionStart({ source: 'clear' })
+  await turn($, 't1', 'explain the cache. speak')
+  await clock.settle()
+  expect(voices).toEqual(['Daniel', 'Daniel', 'Daniel'])
+})
+
+test('a voice that is not installed stops the reading and shows a toast', async ($, on) => {
+  const { clock, spoken, toasts } = setup(on, {
+    speak: (_text, _index, voice) => (voice === 'Samantha' ? undefined : { deny: `voice not installed: ${voice}` }),
+  })
+  await $.command.run(omp('voice Nobody'))
+  await turn($, 't1', 'explain the cache. speak')
+  await clock.settle()
+  expect(spoken).toHaveLength(1)
+  expect(toasts).toHaveLength(1)
+  expect(toasts[0]).toMatch(/^Speech failed: .*voice not installed: Nobody/)
 })
 
 // Subagents.

@@ -21,13 +21,15 @@ import {
 } from './turn-model'
 import { metersOf, placementOf, usageCommand } from './usage'
 import { drawMeters } from './usage-line'
+import { DEFAULT_VOICE, voiceCommand, voiceOf } from './voice'
 
-const OMP_HELP = 'usage: /omp usage above|below, or /omp density full|balanced|compact|blackbox'
+const OMP_HELP = 'usage: /omp usage above|below, /omp density full|balanced|compact|blackbox, or /omp voice <name>'
 
 const expandedAtom = atom({ plugin: 'omp-blocks', key: 'expanded' } as const, false)
 const durationAtom = atom({ plugin: 'omp-blocks', key: 'duration' } as const, -1)
 const usageAtom = atom({ plugin: 'omp-blocks', key: 'usage' } as const, 'above' as UsagePlacement)
 const densityAtom = atom({ plugin: 'omp-blocks', key: 'density' } as const, 'balanced' as Density)
+const voiceAtom = atom({ plugin: 'omp-blocks', key: 'voice' } as const, DEFAULT_VOICE)
 const openedAtom = atom({ plugin: 'omp-blocks', key: 'opened' } as const, false)
 const ungroupedAtom = atom({ plugin: 'omp-blocks', key: 'ungrouped' } as const, false)
 const metersAtom = atom({ plugin: 'omp-blocks', key: 'meters' } as const, [] as UsageMeter[])
@@ -65,8 +67,10 @@ async function refreshMeters($: EngineInterface): Promise<void> {
 async function loadSettings($: EngineInterface): Promise<void> {
   const stored = placementOf(await $.store.get('usage'))
   const density = densityOf(await $.store.get('density'))
+  const voice = voiceOf(await $.store.get('voice'))
   await update($, usageAtom, () => stored)
   await update($, densityAtom, () => density)
+  await update($, voiceAtom, () => voice)
   await refreshMeters($)
 }
 
@@ -227,13 +231,14 @@ async function claimReading($: EngineInterface): Promise<number> {
   return claimed
 }
 
-// One sentence at a time while the reading holds the counter, so a prompt stops it after
-// the sentence it is speaking.
+// One sentence at a time in the stored voice while the reading holds the counter, so a
+// prompt stops it after the sentence it is speaking.
 async function readAloud($: EngineInterface, reading: number, text: string): Promise<void> {
+  const voice = await read($, voiceAtom)
   for (const sentence of speechSentences(text)) {
     if ((await read($, speechAtom)) !== reading) return
     try {
-      await $.audio.speak(sentence)
+      await $.audio.speak(sentence, { voice })
     } catch (error) {
       $.ui.toast(`Speech failed: ${error instanceof Error ? error.message : String(error)}`)
       return
@@ -322,8 +327,8 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'omp',
-      description: 'omp-blocks settings: /omp usage above|below, /omp density full|balanced|compact|blackbox',
-      argumentHint: 'usage above|below | density full|balanced|compact|blackbox',
+      description: 'omp-blocks settings: /omp usage above|below, /omp density full|balanced|compact|blackbox, /omp voice <name>',
+      argumentHint: 'usage above|below | density full|balanced|compact|blackbox | voice <name>',
     })
     await loadSettings($)
     return next(e)
@@ -343,6 +348,15 @@ export const register: Register = on => {
         const density = result.density
         await $.store.set('density', density)
         await update($, densityAtom, () => density)
+      }
+      return { text: result.text }
+    }
+    if (setting === 'voice') {
+      const result = voiceCommand(e.args, await read($, voiceAtom))
+      if (result.voice !== undefined) {
+        const voice = result.voice
+        await $.store.set('voice', voice)
+        await update($, voiceAtom, () => voice)
       }
       return { text: result.text }
     }
