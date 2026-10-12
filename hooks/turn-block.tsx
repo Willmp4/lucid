@@ -5,8 +5,8 @@ import type { CardContent } from './card-model'
 import { COLORS } from './text-style'
 import { backgroundLabel, callLabel, fitLine, fitParts, isBrokenCall, statusLine, titleOf } from './turn-model'
 
-// A turn's calls at the blackbox level: one bordered block, folded to its title and status
-// lines, failures always listed; open, a compact card per call.
+// A run of a turn's calls at the blackbox level: one bordered block, folded to its title and
+// status lines, failures always listed; open, a compact card per call.
 
 export type TurnView = {
   calls: { id: string; record: CallRecord }[]

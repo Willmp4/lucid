@@ -21,7 +21,8 @@ In scope:
 - `ToolGroup` rows that hold supported shell, read, and search calls: one
   merged card or the group forced open
 - The card density, set by `/omp density`
-- At the `blackbox` level, each main-loop turn's calls, drawn as one block
+- At the `blackbox` level, each run of a main-loop turn's calls, drawn as one
+  block that Claude's text ends
 - Terminal `AssistantMessage` rows that hold a markdown table
 - The usage meters' placement: `AbovePrompt` and `PromptHint`, set by `/omp usage`
 - The `terminal` surface
@@ -31,7 +32,7 @@ Out of scope:
 - Unsupported tools and unknown result formats, which pass through to skins
 - The `desktop`, `vscode`, and `mobile` surfaces, which pass through
 - Image, PDF, notebook, and background-command payloads, which keep native
-  UI; at `blackbox`, a background command folds into the turn's block
+  UI; at `blackbox`, a background command folds into its block
 - Expanding an Edit/Write diff past its row cap, and full programming-language
   syntax highlighting
 - Reading the skins palette; this mod's colours are fixed
@@ -54,11 +55,11 @@ installations use Claude Code's plugin cache.
 | `hooks/tool-card.tsx` | Card frame, previews by density level, and expansion controls |
 | `hooks/group-card.tsx` | A run of reads and searches as one card: per-call rows and the merged header |
 | `hooks/density.ts` | `/omp density` parsing and the stored level |
-| `hooks/turn-model.ts` | Pure functions: a turn's rows to calls, results to outcomes and error lines, background jobs, the block's title and status line, and lines cut to a width |
-| `hooks/turn-block.tsx` | A turn's block: the title and status lines, folded failures, and the open call cards |
+| `hooks/turn-model.ts` | Pure functions: a turn's rows to blocks of calls, results to outcomes, error lines, and block times, background jobs, a block's title and status line, and lines cut to a width |
+| `hooks/turn-block.tsx` | A block of a turn's calls: the title and status lines, folded failures, and the open call cards |
 | `hooks/shell-command.ts` | Pure functions: a shell command to segments, each segment's program past its wrappers, its class, its name, and the files it names |
 | `hooks/shell-command.test.ts` | The splitter, wrapper stripping, the classifier, run names, and targets |
-| `hooks/blackbox.test.ts` | The `blackbox` level: the setting, the turn model, the block drawn through session events, background jobs, line widths, and error lines |
+| `hooks/blackbox.test.ts` | The `blackbox` level: the setting, the turn model and its blocks, the blocks drawn through session events, background jobs, line widths, and error lines |
 | `hooks/density.test.ts` | Level parsing, the command, persistence, and the reload after `/clear` |
 | `hooks/levels.test.ts` | Each level's cards, merged groups and their fallbacks, compact expansion, failures, and caps |
 | `hooks/text-style.tsx` | Shared palette, conservative lexical spans, and bounded inline rendering |
@@ -78,8 +79,9 @@ installations use Claude Code's plugin cache.
 The mod keeps expansion, compact opening, merged-group splitting, and Bash
 duration in `$.state` families keyed by the render request ID: a tool
 call's, or a merged group's for its compact opening. Each call expands
-independently. At `blackbox` it also keeps each turn's record, keyed by the
-turn ID, and each call's turn, keyed by its `tool_use_id`.
+independently. At `blackbox` it also keeps each turn's record of its blocks,
+keyed by the turn ID; each call's turn, keyed by its `tool_use_id`; and each
+block's open state, keyed by its first call's `tool_use_id`.
 
 ## Hook order
 
@@ -140,7 +142,7 @@ nothing. `/omp` with neither setting's name shows one usage line for both.
 | `full` | The longest previews: forced-open groups, 16-row previews, 40-row diffs, and 20-row new-file previews |
 | `balanced` | A card's body shows what the user acts on: shell results at the end of the output, diffs, and failures |
 | `compact` | Each card is one header line inside its border; **Show ▸** opens the `balanced` body |
-| `blackbox` | Each turn's calls fold into one block, and Claude's text draws outside it; each call opens as its `compact` card |
+| `blackbox` | Each run of a turn's calls folds into one block, and Claude's text ends a block and draws between blocks; each call opens as its `compact` card |
 
 A failed call opens in full at every level. Below `full`, an interrupted
 call does too, and its border turns red.
@@ -170,22 +172,27 @@ once settled, or produces no card (`cardOf` returns `null`).
 
 ### Turn blocks
 
-At `blackbox`, one bordered block holds every tool call of a main-loop turn,
-from the prompt to Claude's final reply. Only calls and their results fold:
-every `AssistantMessage` row draws as it does at the other levels, wherever it
-falls in the turn. The block draws at the turn's first call, so text written
-before that call stays above the block, and each later message draws below it
-in turn order, ending with the final reply. Subagent (Agent) calls count as
-calls; a subagent's own calls do not.
+At `blackbox`, one bordered block holds each run of a main-loop turn's tool
+calls with no text of Claude's between them. Only calls and their results
+fold: every `AssistantMessage` row draws as it does at the other levels. Text
+Claude writes after a call closes that call's block, and the next call opens a
+new block at its own row, so the turn reads text, block, text, block, and the
+final reply, each message next to the calls it follows. Thinking, text that is
+only whitespace, and a subagent's text close no block. Subagent (Agent) calls
+count as calls; a subagent's own calls do not.
 
 ```text
 ❯ Fix the type error in bash-card.test.ts
+⏺ Reading the failing test first.
 ╭────────────────────────────────────────╮
-│ ▸ Editing bash-card.test.ts +1 file    │
-│   23 calls · 2 failed · 3m 54s         │
+│ ▸ Reading bash-card.test.ts            │
+│   3 calls · 2.4s                       │
 ╰────────────────────────────────────────╯
 ⏺ The types folder holds generated files the engine writes on load.
-⏺ Building an equivalent tsconfig outside the worktree.
+╭────────────────────────────────────────╮
+│ ▸ Editing bash-card.test.ts +1 file    │
+│   20 calls · 2 failed · 3m 51s         │
+╰────────────────────────────────────────╯
 ⏺ The error is fixed.
 ```
 
@@ -194,16 +201,18 @@ calls; a subagent's own calls do not.
 | Event | What it records |
 |---|---|
 | `turn.start` | The turn running (`liveTurn`), only while the level is `blackbox` |
-| `session.append`, door `response`, no `agentId` | The row's `tool_use` blocks, keyed by `tool_use_id`, appended to the turn's items; each call's turn in `owner` |
+| `session.append`, door `response`, no `agentId` | The row's text and `tool_use` blocks, in order: text closes the open block, and a call, keyed by `tool_use_id`, joins it or opens the next block, which starts at `$.clock.now()`; each call's turn in `owner` |
 | `tool.call`, no `agentId` | The call's stored result, the text the model read, its status, its error line, and for a Bash call the engine moved to the background, `background` with any `timedOutAfterMs`; the result passes on unchanged |
-| `session.append`, door `tool-result` | Each answered call's status and, for an error, its error line |
-| `turn.complete`, no `agentId` | The turn's `durationMs`; an aborted turn marks its running calls interrupted |
+| `session.append`, door `tool-result` | Each answered call's status and, for an error, its error line; each block that holds an answered call ends at `$.clock.now()` |
+| `turn.complete`, no `agentId` | The open block closes, ending then if the turn was aborted or no result answered it; an aborted turn marks its running calls interrupted |
 
 A `ToolGroup` call's `tool_use_id` names its call. A row whose call is still
-streaming has no record yet; during the turn running, it joins that turn.
+streaming has no record yet; during the turn running, it joins that turn's
+open block, or opens the next block when text closed the last one.
 
-**Rows.** The block draws at the turn's anchor, its first call: in that
-call's `ToolUse` row, or in the `ToolGroup` row that holds it. Every other
+**Rows.** Each block draws at its anchor, its first call: in that call's
+`ToolUse` row, or in the `ToolGroup` row that holds it. A group that holds
+the anchors of two blocks draws both, in turn order. Every other
 call row and its `ToolResult` draw an empty `Box`, which leaves no blank line.
 A call whose result the block cannot show keeps its own row: a Read, Grep,
 Glob, or Bash payload `cardOf` rejects, or another tool's result with no text.
@@ -226,14 +235,14 @@ measurement, because a `Button`'s children do not follow their `Text`'s
 `wrap`. The title `Button` keeps the whole title as its `label`.
 
 - **Title line:** `▸`, then the title, the first of these that applies:
-  1. A turn that edits or writes (Edit, Write, NotebookEdit): `Editing`, the
+  1. A block that edits or writes (Edit, Write, NotebookEdit): `Editing`, the
      file it touches most (the first on a tie), and `+N file` or `+N files`
      for the rest. A file shows its basename unless another touched file
      shares it, and its shortened path then
-  2. A turn with a run segment: `Running` and the first run segment's name,
+  2. A block with a run segment: `Running` and the first run segment's name,
      with no `+N`
-  3. A turn with a read: `Reading` and its main target
-  4. A turn with a search: `Searching` and its main target
+  3. A block with a read: `Reading` and its main target
+  4. A block with a search: `Searching` and its main target
   5. Else `Using` and the first call's tool
 
   The title describes a shell command by what it does rather than quoting it,
@@ -267,14 +276,16 @@ measurement, because a `Button`'s children do not follow their `Text`'s
     resolved against the working directory and `~` against the home directory
     the working directory sits under (`/Users/<name>`, `/home/<name>`, or
     `/root`), so two spellings of one file count once. The main target is the path
-    touched most by the turn's read and search calls together, the first on a
+    touched most by the block's read and search calls together, the first on a
     tie; a pattern is the main target only when no path was touched. `+N file`
     or `+N files` counts every other distinct target, a pattern included. A
-    read or search that names no target at all titles the turn by its command,
+    read or search that names no target at all titles the block by its command,
     such as `Reading git status`
-- **Status line:** `N calls · K failed · <elapsed>`. `K` counts failed and
-  interrupted calls and is left out at 0. The elapsed time is the turn's
-  `durationMs`, left out until the turn ends. While the turn runs, the line
+- **Status line:** `N calls · K failed · <elapsed>`, for the block's own
+  calls. `K` counts failed and interrupted calls and is left out at 0. The
+  elapsed time runs from the response row that holds the block's first call
+  to the last result row that answers one of its calls, and is left out while
+  the block is open. While the block is open in the turn running, the line
   ends with the newest running call's label, such as `· Bash: python3 toy.py`.
   A background job reads `· background` there: a call with
   `run_in_background`, or one whose result carries `backgroundTaskId`
@@ -287,9 +298,9 @@ measurement, because a `Button`'s children do not follow their `Text`'s
   output, so it reads as stdout. Another tool's error line is the first line
   of its error text
 
-**Open:** a press on the title line toggles the turn's member of `unfolded`
-and the arrow turns to `▾`. The block lists the turn's calls in turn order and
-no text. Each call draws its `compact` card, with its button keys suffixed by
+**Open:** a press on the title line toggles the block's member of
+`unfolded`, keyed by its first call, and the arrow turns to `▾`; each block
+opens on its own. The block lists its calls in turn order and no text. Each call draws its `compact` card, with its button keys suffixed by
 `-<tool_use_id>`, and **Show ▸** opens the call's `balanced` body. A call no
 card formats, such as Agent or an MCP tool, draws a card whose rows are the
 text the model read. A background job draws one muted row, cut to one terminal
@@ -344,7 +355,7 @@ tool never returned.
 
 Native rendering remains responsible for nontext Read results, background
 Bash tasks, and unsupported structured payloads. At `blackbox`, a recorded
-turn's background Bash task folds into the turn's block instead.
+turn's background Bash task folds into its block instead.
 
 ## Semantic colour hierarchy
 
@@ -569,12 +580,14 @@ Rendered-text queries use exact matches for individual styles; precedence
 checks permit nested or inherited spans but reject conflicting colours.
 
 `hooks/blackbox.test.ts` covers the `blackbox` setting, the turn model's
-anchor, title rules, status line, and labels, and the block drawn through
-session events: the folded lines and their truncation, failures and
-interruptions while folded, hidden call rows that draw nothing, Claude's text
-drawing before, between, and after the calls, an answer that one more call
-follows, the open call cards in turn order with no text, each call's
-**Show ▸**, the call in progress, streaming calls, Agent calls, subagent rows,
+blocks, anchors, times, title rules, status line, and labels, and the blocks
+drawn through session events: the folded lines and their truncation, failures
+and interruptions while folded, hidden call rows that draw nothing, Claude's
+text drawing before, between, and after the blocks, text ending a block and
+the next call opening one, each block's own title, count, time, and open
+state, thinking and a subagent's text closing no block, a group that spans
+two blocks, an answer that one more call follows, the open call cards in turn
+order with no text, each call's **Show ▸**, the call in progress, streaming calls, Agent calls, subagent rows,
 results the block cannot show, unrecorded turns at `compact`, the other levels
 with the same events, and the desktop surface. It also covers background jobs
 moved there by a timeout or by `run_in_background`, and their native rows at

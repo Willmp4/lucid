@@ -1,13 +1,13 @@
-import type { CallBody, CallRecord, CallStatus, TurnItem, TurnRecord } from '../types'
+import type { CallBody, CallRecord, CallStatus, TurnBlock, TurnItem, TurnRecord } from '../types'
 import { errorLine, shortenPath } from './block'
 import { cleanText, recordOf, textOf } from './card-model'
 import { widthOf } from './reply-table'
 import { shellActions } from './shell-command'
 import type { ShellAction, ShellTarget } from './shell-command'
 
-// At the blackbox level a turn's calls fold into one block; Claude's text draws outside it.
-// These are the pure parts: what a row adds to a turn, a call's outcome, and the block's
-// title and status line.
+// At the blackbox level each run of a turn's calls folds into one block, and Claude's text
+// between runs ends a block. These are the pure parts: what a row adds to a turn, a call's
+// outcome, and a block's title and status line.
 
 // The input field each editing tool names its file by.
 const EDITING: Readonly<Record<string, string>> = { Edit: 'file_path', Write: 'file_path', NotebookEdit: 'notebook_path' }
@@ -21,9 +21,50 @@ export type TurnTitle = { verb: string; subject: string; extra?: string }
 export type RecordedCall = { id: string; record: CallRecord; body: CallBody }
 export type CallResult = { id: string; status: CallStatus; text: string; error?: string }
 
-export function anchorOf(turn: TurnRecord): string | undefined {
-  return turn.items.find(item => item.kind === 'call')?.id
+// The first call of the block that holds a call: the row the block draws at.
+export function anchorOf(turn: TurnRecord, id: string): string | undefined {
+  return turn.blocks.find(block => block.ids.includes(id))?.ids[0]
 }
+
+// The block that takes the turn's next call: its last, until text or the turn's end closes it.
+export function openBlock(turn: TurnRecord): TurnBlock | undefined {
+  const last = turn.blocks.at(-1)
+  return last === undefined || last.closed ? undefined : last
+}
+
+// A turn with a response row's items added at `now`: text closes the open block, and a call
+// joins it or opens the next one.
+export function addItems(turn: TurnRecord, items: readonly TurnItem[], now: number): TurnRecord {
+  let blocks = turn.blocks
+  for (const item of items) {
+    const open = openBlock({ blocks })
+    if (item.kind === 'text') {
+      if (open !== undefined) blocks = [...blocks.slice(0, -1), { ...open, closed: true }]
+    } else if (!blocks.some(block => block.ids.includes(item.id))) {
+      blocks = open === undefined
+        ? [...blocks, { ids: [item.id], startedAt: now, closed: false }]
+        : [...blocks.slice(0, -1), { ...open, ids: [...open.ids, item.id] }]
+    }
+  }
+  return blocks === turn.blocks ? turn : { blocks }
+}
+
+// A turn whose calls `ids` were answered at `now`: each block holding one ends then.
+export function answerCalls(turn: TurnRecord, ids: readonly string[], now: number): TurnRecord {
+  if (!turn.blocks.some(block => block.ids.some(id => ids.includes(id)))) return turn
+  return { blocks: turn.blocks.map(block => (block.ids.some(id => ids.includes(id)) ? { ...block, endedAt: now } : block)) }
+}
+
+// A turn at its end: the open block closes, and ends now if it was aborted or never answered.
+export function endTurn(turn: TurnRecord, now: number, aborted: boolean): TurnRecord {
+  const open = openBlock(turn)
+  if (open === undefined) return turn
+  return { blocks: [...turn.blocks.slice(0, -1), { ...open, closed: true, endedAt: aborted ? now : open.endedAt ?? now }] }
+}
+
+// A closed block's elapsed time; an open block's is still running.
+export const elapsedOf = (block: TurnBlock): number | undefined =>
+  block.closed && block.endedAt !== undefined ? block.endedAt - block.startedAt : undefined
 
 const firstLine = (value: string) => cleanText(value).split('\n').map(line => line.trim()).find(line => line !== '') ?? ''
 const baseName = (path: string) => path.replace(/\/+$/, '').split('/').at(-1) ?? path
@@ -38,11 +79,13 @@ export function recordInput(input: unknown): Record<string, unknown> {
   return kept
 }
 
-// A response row's calls, in the order the model wrote them.
+// A response row's text and calls, in the order the model wrote them. Thinking, and text that
+// is only whitespace, add nothing.
 export function responseItems(content: readonly { type: string; [field: string]: unknown }[]) {
   const items: TurnItem[] = []
   const calls: RecordedCall[] = []
   for (const block of content) {
+    if (block.type === 'text' && textOf(block.text).trim() !== '') items.push({ kind: 'text' })
     if (block.type !== 'tool_use' || typeof block.id !== 'string') continue
     items.push({ kind: 'call', id: block.id })
     calls.push({

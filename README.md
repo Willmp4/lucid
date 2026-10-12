@@ -16,7 +16,7 @@ test totals and exit status print, and the diffs to review. A run of reads and
 searches shares one card with a row per call. Click **Show all** to expand a
 card or to split a merged run into its own cards, and **Collapse** to restore
 it. Failed calls always open in full. `/omp density` sets how much each card
-shows, or folds each turn's calls into one block.
+shows, or folds each run of calls into a block that Claude's text ends.
 
 Peach bold tool labels, cyan paths, and softer ordinary output share one
 palette across all six tools. Shell commands distinguish commands, flags,
@@ -41,7 +41,7 @@ sessions.
 | `/omp density balanced` | Card bodies show what the user acts on. The default |
 | `/omp density compact` | Each card shows one header line and opens on **Show ▸** |
 | `/omp density full` | Cards show their full previews, and every run of calls draws one card per call |
-| `/omp density blackbox` | Each turn's tool calls fold into one block that opens on click; Claude's text draws below it |
+| `/omp density blackbox` | Each run of tool calls folds into one block that opens on click; Claude's text between runs ends a block |
 | `/omp density` | Shows the current level |
 
 The density level sets each card's body:
@@ -54,49 +54,55 @@ The density level sets each card's body:
 | Edit and Write | Up to 40 diff rows or 20 new-file rows | Up to 12 rows | One header line with the counts; **Show ▸** opens the 12 rows |
 | A failed call | Every row and a red border | Every row and a red border | Every row and a red border |
 
-At `blackbox`, one bordered block holds every tool call of a turn, from the
-prompt to Claude's final reply. Only the calls and their results fold;
-Claude's text never does. The block draws where the turn's first call would,
-so text Claude writes before that call stays above it, and each later message
-draws below the block in turn order, ending with the final reply. The block is
-folded by default:
+At `blackbox`, one bordered block holds each run of tool calls that Claude
+makes without writing text between them. Only the calls and their results
+fold; Claude's text never does. Text Claude writes after a call ends that
+call's block, and the next call opens a new block where it would draw, so each
+message sits between the calls it follows and the calls it leads to, and the
+final reply comes last. Each block is folded by default:
 
 ```text
+⏺ Reading the notes first.
+╭──────────────────────────────────────────╮
+│ ▸ Reading notes.txt                      │
+│   2 calls · 1.4s                         │
+╰──────────────────────────────────────────╯
+⏺ The notes name inventory.py, so the edit goes there.
 ╭──────────────────────────────────────────╮
 │ ▸ Editing inventory.py +1 file           │
-│   10 calls · 1 failed · 6.1s             │
+│   8 calls · 1 failed · 4.7s              │
 │   ✗ Bash: cat missing.txt                │
 │     cat: missing.txt: No such file       │
 ╰──────────────────────────────────────────╯
-⏺ The notes name inventory.py, so the edit goes there.
 ⏺ All seven steps ran; cat failed as planned.
 ```
 
 Each folded line takes one terminal row at any pane width, cut with `…`.
 
-- **Title:** `Editing` and the file the turn edits or writes most, with
+- **Title:** `Editing` and the file the block edits or writes most, with
   `+N file` or `+N files` for the rest. Otherwise the title reads a shell
   command by what it does, not its raw text: `Running` and the first command
   it runs, named by its program and up to two words (`Running npm test`,
   `Running python3 inventory.py`); else `Reading` or `Searching` and the file
-  the turn's reads and searches touch most, with `+N file` or `+N files` for
+  the block's reads and searches touch most, with `+N file` or `+N files` for
   the others (`Reading index.mjs +1 file`); else `Using` and the first tool.
   `cat`, `head`, `tail`, `wc`, `sed -n`, and `git show`, `log`, `diff`, and
   `status` read; `grep`, `rg`, `find`, `fd`, `ls`, and `tree` search;
   wrappers such as `rtk proxy` and `timeout 60`, and commands such as `cd`
   and `echo`, take no part. A file shows its name alone unless another
   touched file shares it
-- **Status line:** the call count, the failed calls, and the turn's duration.
-  While the turn runs, the line ends with the call in progress, such as
-  `· Bash: python3 toy.py`, or `· background` for a background job, and the
-  duration waits for the turn to end
+- **Status line:** the block's call count, its failed calls, and its time,
+  from its first call to its last result. While the block is open, the line
+  ends with the call in progress, such as `· Bash: python3 toy.py`, or
+  `· background` for a background job, and the time waits for text or the
+  turn's end to close the block
 - **Failures:** a failed or interrupted call turns the border red and lists
   its header and an error line, folded or open. For a shell command, the error
   line is the first stderr line, else the last output line, so a status line
   such as `ok` that a command wrapper prints first never stands in for the
   error. `Exit code N` lines are skipped, and `Failed` stands in when no line
   is left
-- **Open:** click the title to list the turn's calls in order, each as its
+- **Open:** click a block's title to list its calls in order, each as its
   `compact` card, with no text; each card's **Show ▸** opens its `balanced`
   body. Subagent calls count as calls
 - **Background jobs:** a shell command moved to the background, on its timeout
@@ -182,7 +188,7 @@ if you also want to remove its styling.
 
 - Terminal-only presentation: desktop and other surfaces retain their rendering
 - Tool inputs, results, permissions, and the content Claude receives stay unchanged
-- Images, PDFs, notebooks, background jobs, and unknown result formats keep native controls; at `blackbox`, a background job folds into the turn's block
+- Images, PDFs, notebooks, background jobs, and unknown result formats keep native controls; at `blackbox`, a background job folds into its block
 - At `full`, successful shell/read/search previews show 16 rows; below it, shell previews show the last 4 stdout rows and read/search cards show their summary
 - At `blackbox`, a turn folds only when the level was set as the turn started; earlier turns, and a resumed session's history, draw at `compact`
 - At `blackbox`, a result the block cannot show, such as an image, keeps its own row; permission prompts and questions stay in full view

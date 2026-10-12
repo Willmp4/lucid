@@ -2,9 +2,13 @@ export type UsagePlacement = 'above' | 'below'
 export type UsageMeter = { label: string; percent: number; bar: string }
 export type Density = 'full' | 'balanced' | 'compact' | 'blackbox'
 
-// One call of a turn by its tool_use_id, in the order the model wrote them.
-export type TurnItem = { kind: 'call'; id: string }
-export type TurnRecord = { items: TurnItem[]; durationMs?: number }
+// What a response row adds to a turn, in the order the model wrote it: a call by its
+// tool_use_id, or text, which ends the block before it.
+export type TurnItem = { kind: 'call'; id: string } | { kind: 'text' }
+// A run of a turn's calls with no text between them, drawn as one block. Its time runs from the
+// row of its first call to its last result; text after it, or the turn's end, closes it.
+export type TurnBlock = { ids: string[]; startedAt: number; endedAt?: number; closed: boolean }
+export type TurnRecord = { blocks: TurnBlock[] }
 export type CallStatus = 'running' | 'ok' | 'failed' | 'interrupted'
 // What a folded turn block reads of a call: long input strings are cut. `background` marks a
 // Bash call the engine moved to the background, with the timeout that moved it.
@@ -29,7 +33,7 @@ declare module 'claude-code' {
       density: Density
       meters: UsageMeter[]
       liveTurn: string
-      turn: StateFamily<TurnRecord>
+      turnBlocks: StateFamily<TurnRecord>
       owner: StateFamily<string>
       call: StateFamily<CallRecord>
       body: StateFamily<CallBody>

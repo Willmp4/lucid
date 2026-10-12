@@ -10,7 +10,10 @@ import { drawReply, hasTable, replyColumns } from './reply'
 import { splitReply } from './reply-table'
 import { CARD_TOOLS, cardOf, drawCard } from './tool-card'
 import { backgroundRow, drawTurn, genericCard } from './turn-block'
-import { anchorOf, backgroundOf, callLabel, failureLine, isBackgroundCall, isBrokenCall, recordInput, responseItems, resultsOf } from './turn-model'
+import {
+  addItems, anchorOf, answerCalls, backgroundOf, callLabel, elapsedOf, endTurn, failureLine, isBackgroundCall, isBrokenCall, openBlock, recordInput,
+  responseItems, resultsOf,
+} from './turn-model'
 import { metersOf, placementOf, usageCommand } from './usage'
 import { drawMeters } from './usage-line'
 
@@ -23,10 +26,11 @@ const densityAtom = atom({ plugin: 'omp-blocks', key: 'density' } as const, 'bal
 const openedAtom = atom({ plugin: 'omp-blocks', key: 'opened' } as const, false)
 const ungroupedAtom = atom({ plugin: 'omp-blocks', key: 'ungrouped' } as const, false)
 const metersAtom = atom({ plugin: 'omp-blocks', key: 'meters' } as const, [] as UsageMeter[])
-// The blackbox level's record of each turn: the turn running, each turn's calls, which turn a
-// call belongs to, each call's outcome, and which blocks are open.
+// The blackbox level's record of each turn: the turn running, each turn's blocks, which turn a
+// call belongs to, each call's outcome, and which blocks are open, by their first call.
 const liveTurnAtom = atom({ plugin: 'omp-blocks', key: 'liveTurn' } as const, '')
-const turnAtom = atom({ plugin: 'omp-blocks', key: 'turn' } as const, { items: [] } as TurnRecord)
+// Keyed apart from the one-block record of earlier versions, which a reload can leave in state.
+const turnAtom = atom({ plugin: 'omp-blocks', key: 'turnBlocks' } as const, { blocks: [] } as TurnRecord)
 const ownerAtom = atom({ plugin: 'omp-blocks', key: 'owner' } as const, '')
 const callAtom = atom({ plugin: 'omp-blocks', key: 'call' } as const, { tool: '', input: {}, status: 'running' } as CallRecord)
 const bodyAtom = atom({ plugin: 'omp-blocks', key: 'body' } as const, { input: {} } as CallBody)
@@ -75,13 +79,20 @@ async function settle($: EngineInterface, id: string, status: CallStatus, text: 
 
 type Content = { type: string; [field: string]: unknown }[]
 
-// A main-loop row of the turn running: the turn's calls first, then whose calls they are.
+// A main-loop row of the turn running: the turn's blocks first, then whose calls they are.
 async function recordRow($: EngineInterface, turnId: string, door: string, content: Content): Promise<void> {
+  const turn = memberOf(turnAtom, member(turnId))
   if (door === 'tool-result') {
+    const answered: string[] = []
     for (const result of resultsOf(content)) {
       if ((await read($, memberOf(ownerAtom, member(result.id)))) !== turnId) continue
       const { tool } = await read($, memberOf(callAtom, member(result.id)))
       await settle($, result.id, result.status, result.text, result.status === 'failed' ? failureLine(tool, result.text) : result.error)
+      answered.push(result.id)
+    }
+    if (answered.length > 0) {
+      const now = await $.clock.now()
+      await update($, turn, record => answerCalls(record, answered, now))
     }
     return
   }
@@ -91,10 +102,9 @@ async function recordRow($: EngineInterface, turnId: string, door: string, conte
     await update($, memberOf(callAtom, member(call.id)), () => call.record)
     await update($, memberOf(bodyAtom, member(call.id)), () => call.body)
   }
-  await update($, memberOf(turnAtom, member(turnId)), turn => ({
-    ...turn, items: [...turn.items, ...items.filter(item => !turn.items.some(seen => seen.id === item.id))],
-  }))
-  for (const item of items) await update($, memberOf(ownerAtom, member(item.id)), () => turnId)
+  const now = await $.clock.now()
+  await update($, turn, record => addItems(record, items, now))
+  for (const call of calls) await update($, memberOf(ownerAtom, member(call.id)), () => turnId)
 }
 
 const isPending = (props: CallProps) => props.output === undefined && !props.isErrored && !props.isInterrupted
@@ -141,20 +151,22 @@ async function drawCall($: EngineInterface, e: RenderInput<'ToolUse' | 'ToolGrou
   return drawCard(ui, card, await read($, expansion), toggle, duration, view)
 }
 
-// The block a turn draws at its first call. `provisional` holds calls a live turn has not
-// recorded yet, while their input streams in.
-async function drawTurnBlock($: EngineInterface, e: RenderInput<'ToolUse' | 'ToolGroup', 'terminal'>, turnId: string, provisional: readonly CallProps[] = []) {
+// The block a turn draws at `anchor`, its first call. `provisional` holds calls a live turn has
+// not recorded yet, while their input streams in.
+async function drawTurnBlock(
+  $: EngineInterface, e: RenderInput<'ToolUse' | 'ToolGroup', 'terminal'>, turnId: string, anchor: string, provisional: readonly CallProps[] = [],
+) {
   const ui = $.ui.resolve(e)
   const cwd = await $.session.cwd()
-  const turn = await read($, memberOf(turnAtom, member(turnId)))
-  const ids = turn.items.flatMap(item => (item.kind === 'call' ? [item.id] : []))
+  const block = (await read($, memberOf(turnAtom, member(turnId)))).blocks.find(found => found.ids[0] === anchor)
+  const ids = block?.ids ?? []
   const calls = await Promise.all(ids.map(async id => ({ id, record: await read($, memberOf(callAtom, member(id))) })))
   provisional.forEach((props, index) => calls.push({
     id: `pending-${index}`, record: { tool: props.tool, input: recordInput(props.input), status: 'running' },
   }))
-  const live = (await read($, liveTurnAtom)) === turnId
+  const live = (await read($, liveTurnAtom)) === turnId && block?.closed !== true
   const running = live ? calls.filter(call => call.record.status === 'running').at(-1) : undefined
-  const unfolding = memberOf(unfoldedAtom, member(turnId))
+  const unfolding = memberOf(unfoldedAtom, member(anchor))
   const unfolded = await read($, unfolding)
   const entries: RenderElement[] = []
   if (unfolded) {
@@ -163,7 +175,7 @@ async function drawTurnBlock($: EngineInterface, e: RenderInput<'ToolUse' | 'Too
   }
   return drawTurn(ui, {
     calls,
-    durationMs: turn.durationMs,
+    durationMs: block === undefined ? undefined : elapsedOf(block),
     running: running === undefined ? undefined : isBackgroundCall(running.record) ? 'background' : callLabel(running.record, cwd),
     unfolded,
     columns: e.viewport?.columns ?? 100,
@@ -226,21 +238,22 @@ export const register: Register = on => {
       if ((await read($, liveTurnAtom)) === e.turnId) {
         const turn = memberOf(turnAtom, member(e.turnId))
         if (e.isAborted) {
-          for (const item of (await read($, turn)).items) {
-            if (item.kind !== 'call') continue
-            await update($, memberOf(callAtom, member(item.id)), (call): CallRecord => call.status === 'running'
+          for (const id of (await read($, turn)).blocks.flatMap(block => block.ids)) {
+            await update($, memberOf(callAtom, member(id)), (call): CallRecord => call.status === 'running'
               ? { ...call, status: 'interrupted', error: 'Interrupted' }
               : call)
           }
         }
-        await update($, turn, record => ({ ...record, durationMs: e.durationMs }))
+        const now = await $.clock.now()
+        await update($, turn, record => endTurn(record, now, e.isAborted))
         await update($, liveTurnAtom, () => '')
       }
     }
     return next(e)
   })
 
-  // At the blackbox level each main-loop turn is recorded: its calls in order.
+  // At the blackbox level each main-loop turn is recorded: its calls in order, in blocks that
+  // Claude's text ends.
   on('turn.start', async ($, e, next) => {
     const recording = (await read($, densityAtom)) === 'blackbox'
     await update($, liveTurnAtom, () => (recording ? e.turnId : ''))
@@ -326,17 +339,28 @@ export const register: Register = on => {
         const owner = owners.find(found => found !== '') ?? ''
         const turnId = owner === '' && e.props.isActive ? await read($, liveTurnAtom) : owner
         if (turnId !== '') {
-          const anchor = anchorOf(await read($, memberOf(turnAtom, member(turnId)))) ?? (e.props.isActive ? ids[0] : undefined)
-          if (anchor !== undefined) {
+          const turn = await read($, memberOf(turnAtom, member(turnId)))
+          // Each call's block, by its first call. A call still streaming in joins the open block,
+          // or the group's first such call opens the next one.
+          const fresh = openBlock(turn)?.ids[0] ?? ids.find((_, index) => owners[index] === '')
+          const anchors = ids.map((id, index) => (owners[index] === '' ? fresh : anchorOf(turn, id)))
+          if (anchors.every(anchor => anchor !== undefined)) {
             const cwd = await $.session.cwd()
             const shown = await Promise.all(e.props.calls.map((call, index) => canShow($, ids[index]!, call, cwd)))
             // A result the block cannot show keeps its row: each row of the open group decides.
             if (shown.includes(false)) return next(forced)
-            if (!ids.includes(anchor)) {
-              const { Box } = $.ui.resolve(e)
-              return <Box />
-            }
-            return drawTurnBlock($, e, turnId, e.props.calls.filter((_, index) => owners[index] === ''))
+            // The group draws each block whose first call it holds, in turn order.
+            const drawn = [...new Set(anchors)].filter(anchor => ids.includes(anchor))
+            const { Box } = $.ui.resolve(e)
+            if (drawn.length === 0) return <Box />
+            const blocks = await Promise.all(drawn.map(anchor => drawTurnBlock($, e, turnId, anchor,
+              e.props.calls.filter((_, index) => owners[index] === '' && anchors[index] === anchor))))
+            if (blocks.length === 1) return blocks[0]!
+            return (
+              <Box flexDirection="column" width="100%">
+                {blocks.map((block, index) => <Box key={`turn-block-${drawn[index]}`} flexDirection="column" width="100%">{block}</Box>)}
+              </Box>
+            )
           }
         }
       }
@@ -377,7 +401,9 @@ export const register: Register = on => {
       const owner = await read($, memberOf(ownerAtom, member(id)))
       const turnId = owner === '' && pending ? await read($, liveTurnAtom) : owner
       if (turnId !== '') {
-        const anchor = anchorOf(await read($, memberOf(turnAtom, member(turnId)))) ?? (pending ? id : undefined)
+        const turn = await read($, memberOf(turnAtom, member(turnId)))
+        // A call still streaming in joins the open block, or opens the next one.
+        const anchor = owner === '' ? openBlock(turn)?.ids[0] ?? id : anchorOf(turn, id)
         if (anchor !== undefined) {
           const shown = await canShow($, id, e.props, await $.session.cwd())
           if (anchor !== id) {
@@ -385,7 +411,7 @@ export const register: Register = on => {
             const { Box } = $.ui.resolve(e)
             return <Box />
           }
-          const block = await drawTurnBlock($, e, turnId, owner === '' ? [e.props] : [])
+          const block = await drawTurnBlock($, e, turnId, anchor, owner === '' ? [e.props] : [])
           if (shown) return block
           const { Box } = $.ui.resolve(e)
           return (

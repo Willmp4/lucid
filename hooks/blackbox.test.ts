@@ -5,16 +5,25 @@ import type { CallRecord, TurnRecord } from '../types'
 import { densityCommand, densityOf } from './density'
 import { COLORS } from './text-style'
 import { widthOf } from './reply-table'
-import { anchorOf, callLabel, failureLine, fitLine, responseItems, resultsOf, shellErrorLine, statusLine, titleOf } from './turn-model'
+import {
+  addItems, anchorOf, answerCalls, callLabel, elapsedOf, endTurn, failureLine, fitLine, openBlock, responseItems, resultsOf, shellErrorLine,
+  statusLine, titleOf,
+} from './turn-model'
 
 const omp = (args: string) => ({
   command: 'omp', args, origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 100 },
 })
 const STOCK: RenderElement = { type: 'Text', props: {}, children: ['native rendering'] }
 
+// The test clock moves only when a call runs or a test waits.
+let now = 0
+const wait = (ms: number) => {
+  now += ms
+}
+
 function setup(on: On) {
   const store = new Map<string, unknown>()
-  let now = 0
+  now = 0
   on('store.get', (_$, e) => ({ value: store.get(e.key) }))
   on('store.set', (_$, e) => {
     store.set(e.key, e.value)
@@ -22,7 +31,7 @@ function setup(on: On) {
   })
   on('session.cwd', () => ({ value: '/work' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 200000 }, rateLimits: [] } }))
-  on('clock.now', () => ({ value: (now += 100) }))
+  on('clock.now', () => ({ value: now }))
   on('turn.start', (_$, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_$, e) => ({ text: e.answer }))
   on('ui.render', (_$, e) => e.component === 'ToolGroup' && e.props.isExpanded
@@ -64,10 +73,46 @@ const titleText = (calls: CallRecord[]) => {
   return [title.verb, title.subject, title.extra].filter(Boolean).join(' ')
 }
 
-test('the turn anchors at its first call', () => {
-  const turn: TurnRecord = { items: [{ kind: 'call', id: 'c1' }, { kind: 'call', id: 'c2' }] }
-  expect(anchorOf(turn)).toBe('c1')
-  expect(anchorOf({ items: [] })).toBeUndefined()
+const EMPTY: TurnRecord = { blocks: [] }
+
+test('text closes the open block, and the next call opens the next one', () => {
+  let turn = addItems(EMPTY, [{ kind: 'text' }, { kind: 'call', id: 'c1' }, { kind: 'call', id: 'c2' }], 100)
+  expect(turn.blocks).toEqual([{ ids: ['c1', 'c2'], startedAt: 100, closed: false }])
+  turn = addItems(turn, [{ kind: 'text' }, { kind: 'call', id: 'c3' }], 300)
+  expect(turn.blocks).toEqual([
+    { ids: ['c1', 'c2'], startedAt: 100, closed: true },
+    { ids: ['c3'], startedAt: 300, closed: false },
+  ])
+  expect(addItems(turn, [{ kind: 'call', id: 'c3' }], 400)).toEqual(turn)
+})
+
+test('a block anchors at its first call, and only the last block takes more calls', () => {
+  const turn = addItems(EMPTY, [{ kind: 'call', id: 'c1' }, { kind: 'call', id: 'c2' }, { kind: 'text' }, { kind: 'call', id: 'c3' }], 0)
+  expect(anchorOf(turn, 'c2')).toBe('c1')
+  expect(anchorOf(turn, 'c3')).toBe('c3')
+  expect(anchorOf(turn, 'c9')).toBeUndefined()
+  expect(openBlock(turn)?.ids).toEqual(['c3'])
+  expect(openBlock(addItems(turn, [{ kind: 'text' }], 0))).toBeUndefined()
+  expect(openBlock(EMPTY)).toBeUndefined()
+})
+
+test('a block’s time runs from its first call to its last answer, and shows once the block closes', () => {
+  let turn = addItems(EMPTY, [{ kind: 'call', id: 'c1' }, { kind: 'call', id: 'c2' }], 1000)
+  turn = answerCalls(turn, ['c1'], 1500)
+  turn = answerCalls(turn, ['c2', 'c9'], 2200)
+  expect(elapsedOf(turn.blocks[0]!)).toBeUndefined()
+  turn = addItems(turn, [{ kind: 'text' }], 2600)
+  expect(elapsedOf(turn.blocks[0]!)).toBe(1200)
+  expect(answerCalls(turn, ['c9'], 5000)).toEqual(turn)
+})
+
+test('the turn’s end closes the open block, and an aborted turn’s block ends with it', () => {
+  const open = addItems(EMPTY, [{ kind: 'call', id: 'c1' }], 1000)
+  expect(elapsedOf(endTurn(answerCalls(open, ['c1'], 1400), 9000, false).blocks[0]!)).toBe(400)
+  expect(elapsedOf(endTurn(open, 3000, false).blocks[0]!)).toBe(2000)
+  expect(elapsedOf(endTurn(answerCalls(open, ['c1'], 1400), 3000, true).blocks[0]!)).toBe(2000)
+  const closed = addItems(answerCalls(open, ['c1'], 1400), [{ kind: 'text' }], 1600)
+  expect(endTurn(closed, 9000, true)).toEqual(closed)
 })
 
 test('a turn that edits is titled by the file it touches most and counts the rest', () => {
@@ -172,14 +217,14 @@ test('a call label is the tool and the first line of what it acts on', () => {
   expect(callLabel(rec('TodoWrite', { todos: [] }), '/work')).toBe('TodoWrite')
 })
 
-test('a response row yields its calls and no text, with long inputs cut for the record', () => {
+test('a response row yields its text and calls in order, with long inputs cut for the record', () => {
   const content = 'x'.repeat(1000)
   const { items, calls } = responseItems([
     { type: 'thinking', thinking: 'hmm' },
     { type: 'text', text: 'Writing it.' },
     { type: 'tool_use', id: 'c1', name: 'Write', input: { file_path: '/work/a.txt', content } },
   ])
-  expect(items).toEqual([{ kind: 'call', id: 'c1' }])
+  expect(items).toEqual([{ kind: 'text' }, { kind: 'call', id: 'c1' }])
   expect(calls).toHaveLength(1)
   expect(calls[0]!.id).toBe('c1')
   expect(calls[0]!.record.tool).toBe('Write')
@@ -187,7 +232,8 @@ test('a response row yields its calls and no text, with long inputs cut for the 
   expect(calls[0]!.record.input.file_path).toBe('/work/a.txt')
   expect(String(calls[0]!.record.input.content).length).toBeLessThan(400)
   expect(calls[0]!.body.input).toEqual({ file_path: '/work/a.txt', content })
-  expect(responseItems([{ type: 'thinking', thinking: 'hmm' }, { type: 'text', text: 'Only text.' }])).toEqual({ items: [], calls: [] })
+  expect(responseItems([{ type: 'thinking', thinking: 'hmm' }, { type: 'text', text: 'Only text.' }])).toEqual({ items: [{ kind: 'text' }], calls: [] })
+  expect(responseItems([{ type: 'thinking', thinking: 'hmm' }, { type: 'text', text: ' \n' }])).toEqual({ items: [], calls: [] })
 })
 
 test('a result row yields each result, its error state, and its text', () => {
@@ -208,11 +254,16 @@ const SITE = { plugin: 'omp-blocks', surface: 'terminal', viewport: { columns: 1
 type Block = { type: string; [field: string]: unknown }
 // What a hidden row draws: an empty Box, with no text and no children.
 const NOTHING = { type: 'Box' }
-type Outcome = { result: unknown; text?: string; isError?: true }
+// A call's result, and how long it runs: a second unless `ms` says otherwise.
+type Outcome = { result: unknown; text?: string; isError?: true; ms?: number }
 
 function session(on: On) {
   const outcomes = new Map<string, Outcome>()
-  on('tool.call', (_$, e) => outcomes.get(e.tool_use_id) ?? { result: { stdout: 'done', stderr: '', interrupted: false }, text: 'done' })
+  on('tool.call', (_$, e) => {
+    const { ms, ...outcome } = outcomes.get(e.tool_use_id) ?? { result: { stdout: 'done', stderr: '', interrupted: false }, text: 'done' }
+    wait(ms ?? 1000)
+    return outcome
+  })
   return outcomes
 }
 
@@ -241,7 +292,8 @@ const EDIT_INVENTORY = {
 }
 const MISSING = 'cat: missing.txt: No such file or directory'
 
-// Text, a read, text, an edit, a failing command, and the final reply.
+// Text, a read, text, an edit, a failing command, and the final reply: two blocks, the read's
+// and the edit's, each call running a second.
 async function editingTurn($: Engine, outcomes: Map<string, Outcome>) {
   await $.turn.start({ text: 'go', turnId: 'turn1' })
   await say($, 'text1', 'Step one reads the notes.')
@@ -276,12 +328,12 @@ async function blackbox($: Engine, on: On) {
   return outcomes
 }
 
-test('folded, the block at the first call shows the title and the status line only', async ($, on) => {
+test('folded, the block at a block’s first call shows the title and the status line only', async ($, on) => {
   const outcomes = await blackbox($, on)
   await editingTurn($, outcomes)
   const ui = await mountUse($, READ_ROW)
-  expect((await ui.find({ key: 'turn-fold' }))?.text).toBe('▸ Editing inventory.py')
-  expect(await ui.find({ type: 'Text', text: '3 calls · 1 failed · 6.1s' })).toBeDefined()
+  expect((await ui.find({ key: 'turn-fold' }))?.text).toBe('▸ Reading notes.txt')
+  expect(await ui.find({ type: 'Text', text: exactly('1 call · 1.0s') })).toBeDefined()
   for (const hidden of ['Step one reads the notes.', 'Read: notes.txt', 'Edit: inventory.py', 'alpha']) {
     expect(await ui.find({ text: hidden })).toBeUndefined()
   }
@@ -289,26 +341,43 @@ test('folded, the block at the first call shows the title and the status line on
   await ui.unmount()
 })
 
+test('text ends a block, and the next call opens a new one with its own title, count, and time', async ($, on) => {
+  const outcomes = await blackbox($, on)
+  await editingTurn($, outcomes)
+  const ui = await mountUse($, EDIT_ROW)
+  expect((await ui.find({ key: 'turn-fold' }))?.text).toBe('▸ Editing inventory.py')
+  expect(await ui.find({ type: 'Text', text: exactly('2 calls · 1 failed · 2.0s') })).toBeDefined()
+  await ui.unmount()
+  const text = await mountText($, 'text2', 'Step two edits the inventory.')
+  expect(await text.find({ type: 'Text', text: 'native rendering' })).toBeDefined()
+  expect(await text.find({ key: 'turn-fold' })).toBeUndefined()
+  await text.unmount()
+})
+
 test('the title and status lines keep to one line each', async ($, on) => {
   const outcomes = await blackbox($, on)
   await editingTurn($, outcomes)
-  const ui = await mountUse($, READ_ROW)
-  expect((await ui.find({ type: 'Text', text: exactly('3 calls · 1 failed · 6.1s') }))?.props.wrap).toBe('truncate-end')
+  const ui = await mountUse($, EDIT_ROW)
+  expect((await ui.find({ type: 'Text', text: exactly('2 calls · 1 failed · 2.0s') }))?.props.wrap).toBe('truncate-end')
   expect((await ui.find({ type: 'Text', text: exactly('▸ Editing inventory.py') }))?.props.wrap).toBe('truncate-end')
   await ui.unmount()
 })
 
-test('a failed call turns the border red and shows its header and first error line while folded', async ($, on) => {
+test('a failed call turns its block’s border red and shows its header and first error line while folded', async ($, on) => {
   const outcomes = await blackbox($, on)
   await editingTurn($, outcomes)
-  const ui = await mountUse($, READ_ROW)
+  const ui = await mountUse($, EDIT_ROW)
   expect(await ui.drawn()).toMatchObject({ type: 'Box', props: { borderColor: COLORS.borderErr } })
   expect(await ui.find({ type: 'Text', text: '✗ Bash: cat missing.txt' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: MISSING })).toBeDefined()
   await ui.unmount()
+  const earlier = await mountUse($, READ_ROW)
+  expect(await earlier.drawn()).toMatchObject({ type: 'Box', props: { borderColor: COLORS.border } })
+  expect(await earlier.find({ text: /✗/ })).toBeUndefined()
+  await earlier.unmount()
 })
 
-test('a turn without failures keeps the plain border and lists no calls', async ($, on) => {
+test('calls with no text between them share one block, with the plain border and no calls listed', async ($, on) => {
   const outcomes = await blackbox($, on)
   await $.turn.start({ text: 'go', turnId: 'calm' })
   await call($, outcomes, 'k1', 'Bash', { command: 'python3 toy.py' }, { result: { stdout: '5', stderr: '', interrupted: false }, text: '5' })
@@ -318,17 +387,17 @@ test('a turn without failures keeps the plain border and lists no calls', async 
   const ui = await mountUse($, tool('k1', 'Bash', { command: 'python3 toy.py' }, { stdout: '5', stderr: '', interrupted: false }))
   expect(await ui.drawn()).toMatchObject({ type: 'Box', props: { borderColor: COLORS.border } })
   expect((await ui.find({ key: 'turn-fold' }))?.text).toBe('▸ Running python3 toy.py')
-  expect(await ui.find({ type: 'Text', text: '2 calls · 0.9s' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: exactly('2 calls · 2.0s') })).toBeDefined()
   expect(await ui.find({ text: /✗/ })).toBeUndefined()
   await ui.unmount()
 })
 
-test('every later call row of the turn draws nothing: calls, groups, and results', async ($, on) => {
+test('every later call row of a block draws nothing: calls, groups, and results', async ($, on) => {
   const outcomes = await blackbox($, on)
   await editingTurn($, outcomes)
   const rows = [
-    await mountUse($, EDIT_ROW),
     await mountUse($, BASH_ROW),
+    await mountResult($, 'c1', 'Read', READ_NOTES),
     await mountResult($, 'c2', 'Edit', EDIT_INVENTORY),
     await mountGroup($, 'collapsed-row-c3', [BASH_ROW]),
   ]
@@ -336,14 +405,6 @@ test('every later call row of the turn draws nothing: calls, groups, and results
     expect(await row.drawn()).toEqual(NOTHING)
     await row.unmount()
   }
-})
-
-test('text between calls draws as it does at the other levels', async ($, on) => {
-  const outcomes = await blackbox($, on)
-  await editingTurn($, outcomes)
-  const text = await mountText($, 'text2', 'Step two edits the inventory.')
-  expect(await text.find({ type: 'Text', text: 'native rendering' })).toBeDefined()
-  await text.unmount()
 })
 
 test('text before the first call draws above the block, which draws at that call', async ($, on) => {
@@ -354,15 +415,27 @@ test('text before the first call draws above the block, which draws at that call
   expect(await text.find({ key: 'turn-fold' })).toBeUndefined()
   await text.unmount()
   const anchor = await mountUse($, READ_ROW)
-  expect((await anchor.find({ key: 'turn-fold' }))?.text).toBe('▸ Editing inventory.py')
+  expect((await anchor.find({ key: 'turn-fold' }))?.text).toBe('▸ Reading notes.txt')
   await anchor.unmount()
 })
 
-test('a group that holds the first call draws the block', async ($, on) => {
+test('a group that holds a block’s first call draws that block', async ($, on) => {
   const outcomes = await blackbox($, on)
   await editingTurn($, outcomes)
-  const ui = await mountGroup($, 'collapsed-row-c1', [READ_ROW])
-  expect((await ui.find({ key: 'turn-fold' }))?.text).toBe('▸ Editing inventory.py')
+  const first = await mountGroup($, 'collapsed-row-c1', [READ_ROW])
+  expect((await first.find({ key: 'turn-fold' }))?.text).toBe('▸ Reading notes.txt')
+  await first.unmount()
+  const second = await mountGroup($, 'collapsed-row-c2', [EDIT_ROW, BASH_ROW])
+  expect((await second.find({ key: 'turn-fold' }))?.text).toBe('▸ Editing inventory.py')
+  await second.unmount()
+})
+
+test('a group whose calls span two blocks draws both, in turn order', async ($, on) => {
+  const outcomes = await blackbox($, on)
+  await editingTurn($, outcomes)
+  const ui = await mountGroup($, 'collapsed-row-c1', [READ_ROW, EDIT_ROW, BASH_ROW])
+  const titles = (await ui.findAll({ key: 'turn-fold' })).map(found => found.text)
+  expect(titles).toEqual(['▸ Reading notes.txt', '▸ Editing inventory.py'])
   await ui.unmount()
 })
 
@@ -374,38 +447,54 @@ test('text after the last call draws', async ($, on) => {
   await ui.unmount()
 })
 
-test('expanded, the block lists a compact card per call in turn order and no text', async ($, on) => {
+test('expanded, a block lists a compact card per call of its own in turn order and no text', async ($, on) => {
   const outcomes = await blackbox($, on)
   await editingTurn($, outcomes)
-  const ui = await mountUse($, READ_ROW)
+  const ui = await mountUse($, EDIT_ROW)
   await ui.press({ key: 'turn-fold' })
   expect((await ui.find({ key: 'turn-fold' }))?.text).toBe('▾ Editing inventory.py')
   const whole = (await ui.findAll({}))[0]!.text
-  const order = ['Read: notes.txt', 'Edit: inventory.py', 'Bash: cat missing.txt']
-  const at = order.map(text => whole.indexOf(text))
+  const at = ['Edit: inventory.py', 'Bash: cat missing.txt'].map(text => whole.indexOf(text))
   for (const index of at) expect(index).toBeGreaterThan(-1)
   expect([...at].sort((a, b) => a - b)).toEqual(at)
-  for (const text of ['Step one reads the notes.', 'Step two edits the inventory.', 'All steps ran']) expect(whole.includes(text)).toBe(false)
+  for (const text of ['Read: notes.txt', 'Step one reads the notes.', 'Step two edits the inventory.', 'All steps ran']) expect(whole.includes(text)).toBe(false)
   expect(await ui.find({ type: 'Markdown' })).toBeUndefined()
-  expect(await ui.find({ key: 'open-card-c1' })).toBeDefined()
+  expect(await ui.find({ key: 'open-card-c1' })).toBeUndefined()
   expect(await ui.find({ key: 'open-card-c2' })).toBeDefined()
   await ui.press({ key: 'turn-fold' })
-  expect(await ui.find({ text: 'Read: notes.txt' })).toBeUndefined()
+  expect(await ui.find({ text: 'Edit: inventory.py' })).toBeUndefined()
   await ui.unmount()
 })
 
-test('each call in the expanded block opens its balanced body on its own Show ▸', async ($, on) => {
+test('each block opens and closes on its own', async ($, on) => {
   const outcomes = await blackbox($, on)
   await editingTurn($, outcomes)
-  const ui = await mountUse($, READ_ROW)
-  await ui.press({ key: 'turn-fold' })
-  expect(await ui.find({ type: 'Button', text: 'Show all (2 rows)' })).toBeUndefined()
-  await ui.press({ key: 'open-card-c1' })
-  expect(await ui.find({ type: 'Button', text: 'Show all (2 rows)' })).toBeDefined()
-  expect(await ui.find({ key: 'open-card-c2' })).toMatchObject({ text: 'Show ▸' })
-  await ui.press({ key: 'open-card-c2' })
-  expect(await ui.find({ type: 'Text', text: 'new' })).toBeDefined()
-  await ui.unmount()
+  const second = await mountUse($, EDIT_ROW)
+  await second.press({ key: 'turn-fold' })
+  await second.unmount()
+  const first = await mountUse($, READ_ROW)
+  expect((await first.find({ key: 'turn-fold' }))?.text).toBe('▸ Reading notes.txt')
+  await first.unmount()
+  const again = await mountUse($, EDIT_ROW)
+  expect((await again.find({ key: 'turn-fold' }))?.text).toBe('▾ Editing inventory.py')
+  await again.unmount()
+})
+
+test('each call in an expanded block opens its balanced body on its own Show ▸', async ($, on) => {
+  const outcomes = await blackbox($, on)
+  await editingTurn($, outcomes)
+  const first = await mountUse($, READ_ROW)
+  await first.press({ key: 'turn-fold' })
+  expect(await first.find({ type: 'Button', text: 'Show all (2 rows)' })).toBeUndefined()
+  await first.press({ key: 'open-card-c1' })
+  expect(await first.find({ type: 'Button', text: 'Show all (2 rows)' })).toBeDefined()
+  await first.unmount()
+  const second = await mountUse($, EDIT_ROW)
+  await second.press({ key: 'turn-fold' })
+  expect(await second.find({ key: 'open-card-c2' })).toMatchObject({ text: 'Show ▸' })
+  await second.press({ key: 'open-card-c2' })
+  expect(await second.find({ type: 'Text', text: 'new' })).toBeDefined()
+  await second.unmount()
 })
 
 test('while the turn runs, the status line names the call in progress and omits the time', async ($, on) => {
@@ -415,29 +504,48 @@ test('while the turn runs, the status line names the call in progress and omits 
   await use($, 'l1', 'Bash', { command: 'python3 toy.py' })
   const ui = await mountUse($, tool('l1', 'Bash', { command: 'python3 toy.py' }, undefined, { isRunning: true }))
   expect(await ui.find({ type: 'Text', text: '1 call · Bash: python3 toy.py' })).toBeDefined()
-  outcomes.set('l1', { result: { stdout: '5', stderr: '', interrupted: false }, text: '5' })
+  outcomes.set('l1', { result: { stdout: '5', stderr: '', interrupted: false }, text: '5', ms: 400 })
   await $.tool.call({ tool: 'Bash', tool_use_id: 'l1', command: 'python3 toy.py' })
   await answer($, 'l1', '5')
   expect(await ui.find({ type: 'Text', text: exactly('1 call') })).toBeDefined()
   await $.turn.complete({ answer: '', durationMs: 400, isAborted: false, turnId: 'live', reason: 'answer' })
-  expect(await ui.find({ type: 'Text', text: '1 call · 0.4s' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: exactly('1 call · 0.4s') })).toBeDefined()
   await ui.unmount()
 })
 
-test('an answer followed by one more call still draws', async ($, on) => {
+test('while the turn runs, a closed block shows its time and only the open block names the call in progress', async ($, on) => {
+  const outcomes = await blackbox($, on)
+  await $.turn.start({ text: 'go', turnId: 'two' })
+  await call($, outcomes, 'o1', 'Bash', { command: 'ls' }, { result: { stdout: 'toy.py', stderr: '', interrupted: false }, text: 'toy.py' })
+  await say($, 'two-text', 'Now the script.')
+  await use($, 'o2', 'Bash', { command: 'python3 toy.py' })
+  const closed = await mountUse($, tool('o1', 'Bash', { command: 'ls' }, { stdout: 'toy.py', stderr: '', interrupted: false }))
+  expect(await closed.find({ type: 'Text', text: exactly('1 call · 1.0s') })).toBeDefined()
+  await closed.unmount()
+  const open = await mountUse($, tool('o2', 'Bash', { command: 'python3 toy.py' }, undefined, { isRunning: true }))
+  expect((await open.find({ key: 'turn-fold' }))?.text).toBe('▸ Running python3 toy.py')
+  expect(await open.find({ type: 'Text', text: exactly('1 call · Bash: python3 toy.py') })).toBeDefined()
+  await open.unmount()
+})
+
+test('an answer followed by one more call draws, and the call opens a new block', async ($, on) => {
   const outcomes = await blackbox($, on)
   await $.turn.start({ text: 'go', turnId: 'pull' })
   await call($, outcomes, 'p1', 'Bash', { command: 'ls' }, { result: { stdout: 'a', stderr: '', interrupted: false }, text: 'a' })
   await say($, 'pull-text', 'The answer is a.')
   const text = await mountText($, 'pull-text', 'The answer is a.')
   expect(await text.find({ type: 'Text', text: 'native rendering' })).toBeDefined()
-  await call($, outcomes, 'p2', 'Bash', { command: 'pwd' }, { result: { stdout: '/work', stderr: '', interrupted: false }, text: '/work' })
-  await $.turn.complete({ answer: '', durationMs: 300, isAborted: false, turnId: 'pull', reason: 'answer' })
+  await call($, outcomes, 'p2', 'Bash', { command: 'python3 toy.py' }, { result: { stdout: '5', stderr: '', interrupted: false }, text: '5' })
+  await $.turn.complete({ answer: '', durationMs: 3000, isAborted: false, turnId: 'pull', reason: 'answer' })
   expect(await text.find({ type: 'Text', text: 'native rendering' })).toBeDefined()
   await text.unmount()
+  const later = await mountUse($, tool('p2', 'Bash', { command: 'python3 toy.py' }, { stdout: '5', stderr: '', interrupted: false }))
+  expect((await later.find({ key: 'turn-fold' }))?.text).toBe('▸ Running python3 toy.py')
+  expect(await later.find({ type: 'Text', text: exactly('1 call · 1.0s') })).toBeDefined()
+  await later.unmount()
 })
 
-test('a later call still streaming in draws nothing once the turn has a block', async ($, on) => {
+test('a later call still streaming in draws nothing while its block is open', async ($, on) => {
   const outcomes = await blackbox($, on)
   await $.turn.start({ text: 'go', turnId: 'stream' })
   await call($, outcomes, 's1', 'Bash', { command: 'ls' }, { result: { stdout: 'a', stderr: '', interrupted: false }, text: 'a' })
@@ -449,15 +557,42 @@ test('a later call still streaming in draws nothing once the turn has a block', 
   await group.unmount()
 })
 
+test('a call streaming in after text opens a new block', async ($, on) => {
+  const outcomes = await blackbox($, on)
+  await $.turn.start({ text: 'go', turnId: 'after' })
+  await call($, outcomes, 'n1', 'Bash', { command: 'ls' }, { result: { stdout: 'a', stderr: '', interrupted: false }, text: 'a' })
+  await say($, 'after-text', 'Writing the result.')
+  const streaming = await mountUse($, tool('n2', 'Write', { file_path: '/work/out.txt' }, undefined, { isRunning: true }))
+  expect((await streaming.find({ key: 'turn-fold' }))?.text).toBe('▸ Editing out.txt')
+  expect(await streaming.find({ type: 'Text', text: exactly('1 call · Write: out.txt') })).toBeDefined()
+  await streaming.unmount()
+})
+
+test('thinking and empty text close no block', async ($, on) => {
+  const outcomes = await blackbox($, on)
+  await $.turn.start({ text: 'go', turnId: 'quiet' })
+  await call($, outcomes, 'h1', 'Bash', { command: 'ls' }, { result: { stdout: 'a', stderr: '', interrupted: false }, text: 'a' })
+  await response($, 'quiet-thinking', [{ type: 'thinking', thinking: 'Next, the script.' }, { type: 'text', text: '  \n' }])
+  await call($, outcomes, 'h2', 'Bash', { command: 'python3 toy.py' }, { result: { stdout: '5', stderr: '', interrupted: false }, text: '5' })
+  await say($, 'quiet-end', 'Done.')
+  const ui = await mountUse($, tool('h1', 'Bash', { command: 'ls' }, { stdout: 'a', stderr: '', interrupted: false }))
+  expect(await ui.find({ type: 'Text', text: exactly('2 calls · 2.0s') })).toBeDefined()
+  await ui.unmount()
+  const later = await mountUse($, tool('h2', 'Bash', { command: 'python3 toy.py' }, { stdout: '5', stderr: '', interrupted: false }))
+  expect(await later.drawn()).toEqual(NOTHING)
+  await later.unmount()
+})
+
 test('an interrupted turn marks its running call and turns the border red', async ($, on) => {
   const outcomes = await blackbox($, on)
   await $.turn.start({ text: 'go', turnId: 'stop' })
   await use($, 'i1', 'Bash', { command: 'sleep 30' })
+  wait(2000)
   await $.turn.complete({ answer: '', durationMs: 2000, isAborted: true, turnId: 'stop', reason: 'aborted' })
   void outcomes
   const ui = await mountUse($, tool('i1', 'Bash', { command: 'sleep 30' }, undefined, { isInterrupted: true }))
   expect(await ui.drawn()).toMatchObject({ type: 'Box', props: { borderColor: COLORS.borderErr } })
-  expect(await ui.find({ type: 'Text', text: '1 call · 1 failed · 2.0s' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: exactly('1 call · 1 failed · 2.0s') })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '✗ Bash: sleep 30' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: exactly('Interrupted') })).toBeDefined()
   await ui.unmount()
@@ -467,13 +602,13 @@ test('an Agent call counts as a call and its result opens in the expanded block'
   const outcomes = await blackbox($, on)
   await $.turn.start({ text: 'go', turnId: 'agent' })
   await call($, outcomes, 'a1', 'Agent', { description: 'Reply with done', prompt: 'Reply with the word done' }, {
-    result: { status: 'completed', content: [{ type: 'text', text: 'done' }] }, text: 'done',
+    result: { status: 'completed', content: [{ type: 'text', text: 'done' }] }, text: 'done', ms: 1500,
   })
   await say($, 'agent-end', 'The agent replied.')
   await $.turn.complete({ answer: 'The agent replied.', durationMs: 1500, isAborted: false, turnId: 'agent', reason: 'answer' })
   const ui = await mountUse($, tool('a1', 'Agent', { description: 'Reply with done' }, { status: 'completed' }))
   expect((await ui.find({ key: 'turn-fold' }))?.text).toBe('▸ Using Agent')
-  expect(await ui.find({ type: 'Text', text: '1 call · 1.5s' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: exactly('1 call · 1.5s') })).toBeDefined()
   await ui.press({ key: 'turn-fold' })
   expect(await ui.find({ text: 'Agent: Reply with done' })).toBeDefined()
   await ui.press({ key: 'open-card-a1' })
@@ -566,6 +701,23 @@ test('a subagent’s rows and calls stay out of the turn', async ($, on) => {
   await ui.unmount()
 })
 
+test('a subagent’s text closes no block of the turn', async ($, on) => {
+  await blackbox($, on)
+  await $.turn.start({ text: 'go', turnId: 'parent' })
+  await use($, 'm1', 'Agent', { description: 'Look around' })
+  await $.session.append({
+    message: { type: 'assistant', role: 'assistant', content: [{ type: 'text', text: 'The subagent looked.' }] },
+    door: 'response', origin: { kind: 'model', model: 'test-model' }, uuid: 'sub-text', agentId: 'agent-1',
+  })
+  await use($, 'm2', 'Read', { file_path: '/work/a.txt' })
+  const ui = await mountUse($, tool('m1', 'Agent', { description: 'Look around' }, undefined, { isRunning: true }))
+  expect(await ui.find({ type: 'Text', text: exactly('2 calls · Read: a.txt') })).toBeDefined()
+  await ui.unmount()
+  const later = await mountUse($, tool('m2', 'Read', { file_path: '/work/a.txt' }, undefined, { isRunning: true }))
+  expect(await later.drawn()).toEqual(NOTHING)
+  await later.unmount()
+})
+
 test('a failed command shows its first error line past the exit code', async ($, on) => {
   const outcomes = await blackbox($, on)
   const text = `Exit code 1\n${MISSING}`
@@ -588,12 +740,12 @@ const STARTED = { stdout: '', stderr: '', interrupted: false, backgroundTaskId: 
 const BUILD = { command: 'npm run build' }
 const SLEEP = { command: 'sleep 3 && echo done', run_in_background: true }
 
-// A command, text, a call moved to the background on its timeout, and the final reply.
+// Text, a command, a call moved to the background on its 120-second timeout, and the final reply.
 async function backgroundTurn($: Engine, outcomes: Map<string, Outcome>) {
   await $.turn.start({ text: 'go', turnId: 'bg' })
-  await call($, outcomes, 'b1', 'Bash', { command: 'echo first' }, { result: { stdout: 'first', stderr: '', interrupted: false }, text: 'first' })
   await say($, 'bg-text', 'Now the long build.')
-  await call($, outcomes, 'b2', 'Bash', BUILD, { result: TIMED_OUT, text: 'Command running in background with ID: bomtka2wc.' })
+  await call($, outcomes, 'b1', 'Bash', { command: 'echo first' }, { result: { stdout: 'first', stderr: '', interrupted: false }, text: 'first' })
+  await call($, outcomes, 'b2', 'Bash', BUILD, { result: TIMED_OUT, text: 'Command running in background with ID: bomtka2wc.', ms: 120000 })
   await say($, 'bg-end', 'The build runs on.')
   await $.turn.complete({ answer: 'The build runs on.', durationMs: 121000, isAborted: false, turnId: 'bg', reason: 'answer' })
 }
@@ -628,7 +780,7 @@ test('a call moved to the background counts as a call, not a failure, and opens 
 test('a run_in_background call stays inside the block, even as its first call', async ($, on) => {
   const outcomes = await blackbox($, on)
   await $.turn.start({ text: 'go', turnId: 'started' })
-  await call($, outcomes, 'r1', 'Bash', SLEEP, { result: STARTED, text: 'Command running in background with ID: bg42.' })
+  await call($, outcomes, 'r1', 'Bash', SLEEP, { result: STARTED, text: 'Command running in background with ID: bg42.', ms: 300 })
   await say($, 'started-end', 'It runs.')
   await $.turn.complete({ answer: 'It runs.', durationMs: 300, isAborted: false, turnId: 'started', reason: 'answer' })
   const ui = await mountUse($, tool('r1', 'Bash', SLEEP, STARTED))
@@ -692,7 +844,9 @@ const LONG_ERROR = 'fatal: ../omp-blocks-wide already exists and is not an empty
 
 async function longTurn($: Engine, outcomes: Map<string, Outcome>) {
   await $.turn.start({ text: 'go', turnId: 'long' })
-  await call($, outcomes, 'w1', 'Bash', { command: LONG_COMMAND }, { isError: true, result: `Exit code 128\n${LONG_ERROR}`, text: `Exit code 128\n${LONG_ERROR}` })
+  await call($, outcomes, 'w1', 'Bash', { command: LONG_COMMAND }, {
+    isError: true, result: `Exit code 128\n${LONG_ERROR}`, text: `Exit code 128\n${LONG_ERROR}`, ms: 1200,
+  })
   await say($, 'long-end', 'It failed.')
   await $.turn.complete({ answer: 'It failed.', durationMs: 1200, isAborted: false, turnId: 'long', reason: 'answer' })
 }
