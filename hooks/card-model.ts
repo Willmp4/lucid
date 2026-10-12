@@ -21,7 +21,8 @@ export type CardContent = {
 }
 
 // Below the full level: the level, whether a compact card is open, and the press that opens or closes it.
-export type CardView = { density: 'balanced' | 'compact'; opened: boolean; toggleOpen: () => void }
+// A card drawn beside others in one tree suffixes its button keys to keep them apart.
+export type CardView = { density: 'balanced' | 'compact'; opened: boolean; toggleOpen: () => void; keySuffix?: string }
 
 export const recordOf = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === 'object' ? value as Record<string, unknown> : {}

@@ -16,7 +16,7 @@ test totals and exit status print, and the diffs to review. A run of reads and
 searches shares one card with a row per call. Click **Show all** to expand a
 card or to split a merged run into its own cards, and **Collapse** to restore
 it. Failed calls always open in full. `/omp density` sets how much each card
-shows.
+shows, or folds each turn's calls into one block.
 
 Peach bold tool labels, cyan paths, and softer ordinary output share one
 palette across all six tools. Shell commands distinguish commands, flags,
@@ -41,6 +41,7 @@ sessions.
 | `/omp density balanced` | Card bodies show what the user acts on. The default |
 | `/omp density compact` | Each card shows one header line and opens on **Show ▸** |
 | `/omp density full` | Cards show their full previews, and every run of calls draws one card per call |
+| `/omp density blackbox` | Each turn's calls, and Claude's text between them, fold into one block that opens on click |
 | `/omp density` | Shows the current level |
 
 The density level sets each card's body:
@@ -52,6 +53,35 @@ The density level sets each card's body:
 | Bash | The first 16 stdout rows; the duration on the summary line | The last 4 stdout rows; `✓` or `✗` and the duration on the header row | One header line with `✓` or `✗` and the duration; **Show ▸** opens the `balanced` body |
 | Edit and Write | Up to 40 diff rows or 20 new-file rows | Up to 12 rows | One header line with the counts; **Show ▸** opens the 12 rows |
 | A failed call | Every row and a red border | Every row and a red border | Every row and a red border |
+
+At `blackbox`, one bordered block holds every tool call of a turn, from the
+prompt to Claude's final reply, and the text Claude writes between calls. The
+final reply, the text after the last call, stays below the block. The block
+draws where the turn's first call would, and is folded by default:
+
+```text
+╭──────────────────────────────────────────╮
+│ ▸ Editing inventory.py +1 file           │
+│   10 calls · 1 failed · 6.1s             │
+│   ✗ Bash: cat missing.txt                │
+│     cat: missing.txt: No such file       │
+╰──────────────────────────────────────────╯
+⏺ All seven steps ran; cat failed as planned.
+```
+
+- **Title:** `Editing` and the file the turn edits or writes most, with
+  `+N file` or `+N files` for the rest; otherwise `Running` and the first
+  shell command, `Reading` and the first file read, `Searching` and the first
+  search pattern, or `Using` and the first tool. A file shows its name alone
+  unless another edited file shares it
+- **Status line:** the call count, the failed calls, and the turn's duration.
+  While the turn runs, the line ends with the call in progress, such as
+  `· Bash: python3 toy.py`, and the duration waits for the turn to end
+- **Failures:** a failed or interrupted call turns the border red and lists
+  its header and first error line, folded or open
+- **Open:** click the title to list the turn's text and calls in order, each
+  call as its `compact` card; each card's **Show ▸** opens its `balanced` body.
+  Subagent calls count as calls
 
 ## Requirements
 
@@ -132,6 +162,9 @@ if you also want to remove its styling.
 - Tool inputs, results, permissions, and the content Claude receives stay unchanged
 - Images, PDFs, notebooks, background jobs, and unknown result formats keep native controls
 - At `full`, successful shell/read/search previews show 16 rows; below it, shell previews show the last 4 stdout rows and read/search cards show their summary
+- At `blackbox`, a turn folds only when the level was set as the turn started; earlier turns, and a resumed session's history, draw at `compact`
+- At `blackbox`, a result the block cannot show, such as an image, keeps its own row; permission prompts and questions stay in full view
+- At `blackbox`, the newest text of a running turn shows below the block until a later call pulls it in
 - Stderr, error rows, and the `Full output` and `Raw output` artifact rows never fold
 - Below `full`, an interrupted call opens in full with a red border, as a failed call does
 - A run that mixes in any other tool stays one card per call; its cards follow the density level
@@ -184,7 +217,7 @@ then run:
 claude --plugin-dir .
 ```
 
-The tests cover rendering, the three density levels, merged runs, expansion
+The tests cover rendering, the four density levels, turn blocks, merged runs, expansion
 transitions, native fallbacks, errors, line offsets, blank matches, search
 pagination, lossless semantic spans, token boundaries, and colour precedence. [SPEC.md](SPEC.md) describes the
 renderer and live smoke checks.

@@ -202,7 +202,7 @@ export function drawBlock(ui: ElementTable<'terminal'>, block: Block, view?: Car
   )
   const control = view?.density === 'compact' && !broken && block.rows.length > 0 ? (
     <Box key="control" flexShrink={0} marginLeft={1}>
-      <Button key="open-card" label={closed ? 'Show ▸' : 'Collapse'} onPress={view.toggleOpen} plain />
+      <Button key={`open-card${view.keySuffix ?? ''}`} label={closed ? 'Show ▸' : 'Collapse'} onPress={view.toggleOpen} plain />
     </Box>
   ) : null
 

@@ -21,6 +21,8 @@ In scope:
 - `ToolGroup` rows that hold supported shell, read, and search calls: one
   merged card or the group forced open
 - The card density, set by `/omp density`
+- At the `blackbox` level, each main-loop turn's calls and the
+  `AssistantMessage` rows between them, drawn as one block
 - Terminal `AssistantMessage` rows that hold a markdown table
 - The usage meters' placement: `AbovePrompt` and `PromptHint`, set by `/omp usage`
 - The `terminal` surface
@@ -52,6 +54,9 @@ installations use Claude Code's plugin cache.
 | `hooks/tool-card.tsx` | Card frame, previews by density level, and expansion controls |
 | `hooks/group-card.tsx` | A run of reads and searches as one card: per-call rows and the merged header |
 | `hooks/density.ts` | `/omp density` parsing and the stored level |
+| `hooks/turn-model.ts` | Pure functions: a turn's rows to items, results to outcomes, the block's title and status line |
+| `hooks/turn-block.tsx` | A turn's block: the title and status lines, folded failures, and the open entries |
+| `hooks/blackbox.test.ts` | The `blackbox` level: the setting, the turn model, and the block drawn through session events |
 | `hooks/density.test.ts` | Level parsing, the command, persistence, and the reload after `/clear` |
 | `hooks/levels.test.ts` | Each level's cards, merged groups and their fallbacks, compact expansion, failures, and caps |
 | `hooks/text-style.tsx` | Shared palette, conservative lexical spans, and bounded inline rendering |
@@ -66,12 +71,13 @@ installations use Claude Code's plugin cache.
 | `hooks/usage.ts` | Meter figures and `/omp usage` parsing |
 | `hooks/usage-line.tsx` | The meter line drawn under the prompt |
 | `hooks/usage.test.ts` | Meter text, the command, placement persistence, and both slots |
-| `types/index.d.ts` | Per-call expansion, opening, and splitting; elapsed time; usage placement; density; and meter state declarations |
+| `types/index.d.ts` | Per-call expansion, opening, and splitting; elapsed time; usage placement; density; meter; and turn-record state declarations |
 
 The mod keeps expansion, compact opening, merged-group splitting, and Bash
 duration in `$.state` families keyed by the render request ID: a tool
 call's, or a merged group's for its compact opening. Each call expands
-independently.
+independently. At `blackbox` it also keeps each turn's record, keyed by the
+turn ID, and each row's turn, keyed by the row's request ID.
 
 ## Hook order
 
@@ -108,6 +114,9 @@ Bash, Read, Grep, or Glob:
   and each call carries the data its card needs, as the following section
   describes; otherwise pass `isExpanded: true` to `next`
 
+At `blackbox`, the rows of a recorded turn follow the turn block rules in
+the Turn blocks section, ahead of the rules above.
+
 An expanded group draws each result inside its `ToolUse` row, and a merged
 card replaces those rows. A separate `ToolResult` belongs to a standalone
 row only, and the rule above holds at every level: each card reaches its
@@ -116,12 +125,12 @@ whole payload through **Show all**, and through **Show ▸** first at
 
 ## Card density
 
-`/omp density full|balanced|compact` stores the level under the store key
-`density` and holds it in the `density` atom. `session.start` and
+`/omp density full|balanced|compact|blackbox` stores the level under the
+store key `density` and holds it in the `density` atom. `session.start` and
 `classic.SessionStart` with the sources `clear`, `resume`, and `fork` load
-it, as they load the usage placement. A stored value other than the three
+it, as they load the usage placement. A stored value other than the four
 levels reads as `balanced`, the default. `/omp density` reports the level; a
-typed value other than the three levels shows the usage line and changes
+typed value other than the four levels shows the usage line and changes
 nothing. `/omp` with neither setting's name shows one usage line for both.
 
 | Level | Purpose |
@@ -129,6 +138,7 @@ nothing. `/omp` with neither setting's name shows one usage line for both.
 | `full` | The longest previews: forced-open groups, 16-row previews, 40-row diffs, and 20-row new-file previews |
 | `balanced` | A card's body shows what the user acts on: shell results at the end of the output, diffs, and failures |
 | `compact` | Each card is one header line inside its border; **Show ▸** opens the `balanced` body |
+| `blackbox` | Each turn's calls and in-between text fold into one block; each call opens as its `compact` card |
 
 A failed call opens in full at every level. Below `full`, an interrupted
 call does too, and its border turns red.
@@ -155,6 +165,66 @@ draws one bordered card:
 A group stays forced open, with each card on the current level's rules, when
 any call is another tool, has no `tool_use_id`, has no input, has no output
 once settled, or produces no card (`cardOf` returns `null`).
+
+### Turn blocks
+
+At `blackbox`, one bordered block holds every tool call of a main-loop turn,
+from the prompt to Claude's final reply, and the text between calls. In-between
+text is an assistant text row that a later call of the same turn follows. The
+final reply, the text after the last call, draws below the block as before.
+Subagent (Agent) calls count as calls; a subagent's own calls do not.
+
+**Recording.** Render props carry no turn, so session events build the record:
+
+| Event | What it records |
+|---|---|
+| `turn.start` | The turn running (`liveTurn`), only while the level is `blackbox` |
+| `session.append`, door `response`, no `agentId` | The row's text, keyed by the row's `uuid`, and its `tool_use` blocks, keyed by `tool_use_id`, appended to the turn's items; each item's turn in `owner` |
+| `tool.call`, no `agentId` | The call's stored result, the text the model read, and its status; the result passes on unchanged |
+| `session.append`, door `tool-result` | Each answered call's status and, for an error, its first line |
+| `turn.complete`, no `agentId` | The turn's `durationMs`; an aborted turn marks its running calls interrupted |
+
+An `AssistantMessage` row's `requestId` is the `uuid` its `session.append`
+carried, and a `ToolGroup` call's `tool_use_id` names its call. A row whose
+call is still streaming has no record yet; during the turn running, it joins
+that turn.
+
+**Rows.** The block draws at the turn's anchor, its first call: in that
+call's `ToolUse` row, or in the `ToolGroup` row that holds it. Every other
+call row, its `ToolResult`, and each in-between `AssistantMessage` draw an
+empty `Box`, which leaves no blank line. A call whose result the block cannot
+show keeps its own row: a Read, Grep, Glob, or Bash payload `cardOf` rejects,
+or another tool's result with no text. A group holding such a call draws
+forced open, and each of its `ToolUse` rows applies these rules. Rows of a
+turn the level did not record, such as a resumed session's history, draw at
+`compact`.
+
+**Folded**, the default:
+
+- **Title line:** `▸`, then the title, cut with `…` to one line:
+  1. A turn that edits or writes (Edit, Write, NotebookEdit): `Editing`, the
+     file it touches most (the first on a tie), and `+N file` or `+N files`
+     for the rest. A file shows its basename unless another touched file
+     shares it, and its shortened path then
+  2. Else the first Bash call: `Running` and the first line of its command
+  3. Else the first Read: `Reading` and the file's basename
+  4. Else the first Grep or Glob: `Searching` and its pattern
+  5. Else `Using` and the first call's tool
+- **Status line:** `N calls · K failed · <elapsed>`, cut with `…` to one
+  line. `K` counts failed and interrupted calls and is left out at 0. The
+  elapsed time is the turn's `durationMs`, left out until the turn ends.
+  While the turn runs, the line ends with the newest running call's label,
+  such as `· Bash: python3 toy.py`
+- **Failures:** a failed or interrupted call turns the border red and adds
+  two lines: `✗` with the call's label, and its first error line. A shell
+  failure's `Exit code N` line gives way to the line after it
+
+**Open:** a press on the title line toggles the turn's member of `unfolded`
+and the arrow turns to `▾`. In turn order, each in-between text draws through
+`$.skins.markdown`, as a reply's text does, and each call draws its `compact`
+card, with its button keys suffixed by `-<tool_use_id>`. **Show ▸** opens the
+call's `balanced` body. A call no card formats, such as Agent or an MCP tool,
+draws a card whose rows are the text the model read.
 
 ## Bash, Read, and search cards
 
@@ -425,6 +495,15 @@ persistence, the band hidden and restored, a survey keeping the band, the
 meter line above the hint line, and the reload after `/clear`.
 Rendered-text queries use exact matches for individual styles; precedence
 checks permit nested or inherited spans but reject conflicting colours.
+
+`hooks/blackbox.test.ts` covers the `blackbox` setting, the turn model's
+anchor, in-between text, title rules, status line, and labels, and the block
+drawn through session events: the folded lines and their truncation, failures
+and interruptions while folded, hidden rows that draw nothing, the final reply
+below the block, the open entries in turn order, each call's **Show ▸**, the
+call in progress, text that a later call pulls in, streaming calls, Agent
+calls, subagent rows, results the block cannot show, unrecorded turns at
+`compact`, the other levels with the same events, and the desktop surface.
 
 `hooks/density.test.ts` covers level parsing, the command's replies and its
 registration, store persistence, the fallback for a stored unknown level,

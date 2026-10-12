@@ -13,8 +13,8 @@ test('densityCommand sets, reports, and refuses levels', () => {
   expect(densityCommand('density compact', 'balanced')).toEqual({ density: 'compact', text: 'card density: compact' })
   expect(densityCommand('  density   FULL ', 'compact')).toEqual({ density: 'full', text: 'card density: full' })
   expect(densityCommand('density', 'compact')).toEqual({ text: 'card density: compact' })
-  expect(densityCommand('density loud', 'balanced')).toEqual({ text: 'usage: /omp density full|balanced|compact' })
-  expect(densityCommand('density full extra', 'balanced')).toEqual({ text: 'usage: /omp density full|balanced|compact' })
+  expect(densityCommand('density loud', 'balanced')).toEqual({ text: 'usage: /omp density full|balanced|compact|blackbox' })
+  expect(densityCommand('density full extra', 'balanced')).toEqual({ text: 'usage: /omp density full|balanced|compact|blackbox' })
 })
 
 const omp = (args: string) => ({
@@ -53,14 +53,14 @@ test('/omp density reports the level, sets one, and refuses an unknown one', asy
   expect(await $.command.run(omp('density compact'))).toMatchObject({ text: 'card density: compact' })
   expect(store.get('density')).toBe('compact')
   expect(await $.command.run(omp('density'))).toMatchObject({ text: 'card density: compact' })
-  expect(await $.command.run(omp('density loud'))).toMatchObject({ text: 'usage: /omp density full|balanced|compact' })
+  expect(await $.command.run(omp('density loud'))).toMatchObject({ text: 'usage: /omp density full|balanced|compact|blackbox' })
   expect(store.get('density')).toBe('compact')
 })
 
 test('/omp with no known setting lists both settings', async ($, on) => {
   setup(on)
   for (const args of ['', 'colour red']) {
-    expect(await $.command.run(omp(args))).toMatchObject({ text: 'usage: /omp usage above|below, or /omp density full|balanced|compact' })
+    expect(await $.command.run(omp(args))).toMatchObject({ text: 'usage: /omp usage above|below, or /omp density full|balanced|compact|blackbox' })
   }
   expect(await $.command.run(omp('usage'))).toMatchObject({ text: 'usage meters: above the prompt' })
 })
@@ -70,8 +70,8 @@ test('the command names both settings when it registers', async ($, on) => {
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
   expect(commands).toEqual([expect.objectContaining({
     name: 'omp',
-    description: 'omp-blocks settings: /omp usage above|below, /omp density full|balanced|compact',
-    argumentHint: 'usage above|below | density full|balanced|compact',
+    description: 'omp-blocks settings: /omp usage above|below, /omp density full|balanced|compact|blackbox',
+    argumentHint: 'usage above|below | density full|balanced|compact|blackbox',
   })])
 })
 

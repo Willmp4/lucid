@@ -52,11 +52,11 @@ export function drawCard(ui: ElementTable<'terminal'>, card: CardContent, expand
     }
   }
   const expansion = hidden > 0 && !closed
-    ? <Button key="expand-output" label={expanded ? 'Collapse' : view === undefined ? `Show all (${hidden} more rows)` : `Show all (${card.rows.length} rows)`} onPress={toggle} plain />
+    ? <Button key={`expand-output${view?.keySuffix ?? ''}`} label={expanded ? 'Collapse' : view === undefined ? `Show all (${hidden} more rows)` : `Show all (${card.rows.length} rows)`} onPress={toggle} plain />
     : null
   const control = view?.density === 'compact' && !broken && (summary || card.rows.length > 0) ? (
     <Box flexShrink={0} marginLeft={1}>
-      <Button key="open-card" label={closed ? 'Show ▸' : 'Collapse'} onPress={view.toggleOpen} plain />
+      <Button key={`open-card${view.keySuffix ?? ''}`} label={closed ? 'Show ▸' : 'Collapse'} onPress={view.toggleOpen} plain />
     </Box>
   ) : null
   const marker = marked ? (
