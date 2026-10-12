@@ -14,7 +14,14 @@ export type CardContent = {
   summary?: string
   rows: CardRow[]
   failed?: boolean
+  // A settled call's outcome, where its tool marks one; absent while it runs.
+  status?: 'ok' | 'failed' | 'interrupted'
+  // The summary less its status word, for a header that marks the status itself.
+  detail?: string
 }
+
+// Below the full level: the level, whether a compact card is open, and the press that opens or closes it.
+export type CardView = { density: 'balanced' | 'compact'; opened: boolean; toggleOpen: () => void }
 
 export const recordOf = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === 'object' ? value as Record<string, unknown> : {}

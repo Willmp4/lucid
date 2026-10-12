@@ -1,4 +1,6 @@
 import type { ElementTable } from 'claude-code'
+import type { Density } from '../types'
+import type { CardView } from './card-model'
 import { COLORS, drawInline, drawWithinLimit } from './text-style'
 
 // One bordered Edit or Write block with a shared OMP dark Catppuccin palette.
@@ -8,6 +10,8 @@ export const EDIT_TOOLS: ReadonlySet<string> = new Set(['Edit', 'Write'])
 
 export const DIFF_CAP = 40
 export const NEW_FILE_CAP = 20
+// Below the full level a diff or new file previews what fits beside the other cards.
+export const SHORT_CAP = 12
 
 export type LineRow = { kind: 'add' | 'del' | 'ctx'; number: string; text: string }
 
@@ -25,6 +29,7 @@ export type Block = {
   counts: Counts | null
   rows: Row[]
   isErrored: boolean
+  isInterrupted: boolean
 }
 
 export type CallProps = {
@@ -141,11 +146,11 @@ export function errorLine(output: unknown): string {
   return line ?? 'Failed'
 }
 
-export function blockOf(props: CallProps, cwd: string): Block {
+export function blockOf(props: CallProps, cwd: string, density: Density = 'full'): Block {
   const output = record(props.output)
   const input = record(props.input)
   const raw = typeof output.filePath === 'string' ? output.filePath : typeof input.file_path === 'string' ? input.file_path : ''
-  const base = { tool: props.tool, path: shortenPath(raw, cwd), isErrored: props.isErrored }
+  const base = { tool: props.tool, path: shortenPath(raw, cwd), isErrored: props.isErrored, isInterrupted: props.isInterrupted }
 
   // Completion output can arrive before the running flag clears.
   if (props.isRunning && props.output === undefined) {
@@ -163,7 +168,7 @@ export function blockOf(props: CallProps, cwd: string): Block {
   if (props.tool === 'Write' && output.type === 'create' && typeof output.content === 'string') {
     const lines = linesOf(output.content)
 
-    return { ...base, counts: { added: lines.length }, rows: capped(newFileRows(lines), NEW_FILE_CAP) }
+    return { ...base, counts: { added: lines.length }, rows: capped(newFileRows(lines), density === 'full' ? NEW_FILE_CAP : SHORT_CAP) }
   }
 
   const hunks = hunksOf(props.output)
@@ -172,7 +177,7 @@ export function blockOf(props: CallProps, cwd: string): Block {
     return { ...base, counts: null, rows: [{ kind: 'note', text: 'no changes shown', color: COLORS.muted }] }
   }
 
-  return { ...base, counts: countsOf(hunks), rows: capped(diffRows(hunks), DIFF_CAP) }
+  return { ...base, counts: countsOf(hunks), rows: capped(diffRows(hunks), density === 'full' ? DIFF_CAP : SHORT_CAP) }
 }
 
 // Leading spaces and tabs on a changed line, drawn as one dot each.
@@ -184,42 +189,54 @@ export function splitIndent(text: string): [string, string] {
 
 const isLine = (row: Row): row is LineRow => row.kind === 'add' || row.kind === 'del' || row.kind === 'ctx'
 
-export function drawBlock(ui: ElementTable<'terminal'>, block: Block) {
-  const { Box, Text } = ui
-  const gutter = Math.max(0, ...block.rows.filter(isLine).map(row => row.number.length))
-  const textLength = block.rows.reduce(
+export function drawBlock(ui: ElementTable<'terminal'>, block: Block, view?: CardView) {
+  const { Box, Text, Button } = ui
+  // Below the full level an interrupted edit opens like a failed one.
+  const broken = block.isErrored || (view !== undefined && block.isInterrupted)
+  const closed = view?.density === 'compact' && !view.opened && !broken
+  const shown = closed ? [] : block.rows
+  const gutter = Math.max(0, ...shown.filter(isLine).map(row => row.number.length))
+  const textLength = shown.reduce(
     (length, row) => length + ('text' in row ? row.text.length : 0),
     block.path.length + block.tool.length,
   )
+  const control = view?.density === 'compact' && !broken && block.rows.length > 0 ? (
+    <Box key="control" flexShrink={0} marginLeft={1}>
+      <Button key="open-card" label={closed ? 'Show ▸' : 'Collapse'} onPress={view.toggleOpen} plain />
+    </Box>
+  ) : null
 
+  const title = (
+    <Text wrap={closed ? 'truncate-end' : 'wrap'}>
+      <Text color={COLORS.name}>✎ </Text>
+      <Text color={COLORS.name} bold>
+        {block.tool}
+      </Text>
+      <Text color={COLORS.muted}>: </Text>
+      <Text color={COLORS.path}>{block.path}</Text>
+      {block.counts === null ? null : (
+        <Text color={COLORS.muted}>
+          {'  ('}
+          <Text color={COLORS.add}>+{block.counts.added}</Text>
+          {block.counts.removed === undefined ? null : (
+            <Text color={COLORS.muted}>
+              {'/'}
+              <Text color={COLORS.del}>-{block.counts.removed}</Text>
+            </Text>
+          )}
+          {')'}
+        </Text>
+      )}
+    </Text>
+  )
   const header = (
     <Box key="head" flexDirection="row" width="100%">
-      <Text wrap="wrap">
-        <Text color={COLORS.name}>✎ </Text>
-        <Text color={COLORS.name} bold>
-          {block.tool}
-        </Text>
-        <Text color={COLORS.muted}>: </Text>
-        <Text color={COLORS.path}>{block.path}</Text>
-        {block.counts === null ? null : (
-          <Text color={COLORS.muted}>
-            {'  ('}
-            <Text color={COLORS.add}>+{block.counts.added}</Text>
-            {block.counts.removed === undefined ? null : (
-              <Text color={COLORS.muted}>
-                {'/'}
-                <Text color={COLORS.del}>-{block.counts.removed}</Text>
-              </Text>
-            )}
-            {')'}
-          </Text>
-        )}
-      </Text>
+      {control === null ? title : [<Box key="title" flexGrow={1} flexShrink={1}>{title}</Box>, control]}
     </Box>
   )
 
   return drawWithinLimit(inlineBudget => {
-    const rows = block.rows.map((row, index) => {
+    const rows = shown.map((row, index) => {
       const key = `r${index}`
 
       if (row.kind === 'gap') {
@@ -282,12 +299,12 @@ export function drawBlock(ui: ElementTable<'terminal'>, block: Block) {
         flexDirection="column"
         width="100%"
         borderStyle="round"
-        borderColor={block.isErrored ? COLORS.borderErr : COLORS.border}
+        borderColor={broken ? COLORS.borderErr : COLORS.border}
         paddingX={1}
       >
         {header}
         {rows}
       </Box>
     )
-  }, textLength, block.rows.length)
+  }, textLength, shown.length)
 }

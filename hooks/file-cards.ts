@@ -95,7 +95,7 @@ export function formatFileTool(props: CallProps, cwd: string): CardContent | nul
 
   if (props.output === undefined) {
     if (props.isErrored) return { ...header, summary: 'Failed', failed: true, rows: [{ text: 'Failed', kind: 'error' }] }
-    if (props.isInterrupted) return { ...header, summary: 'Interrupted', rows: [{ text: 'Interrupted', kind: 'muted' }] }
+    if (props.isInterrupted) return { ...header, summary: 'Interrupted', status: 'interrupted', rows: [{ text: 'Interrupted', kind: 'muted' }] }
     let summary: string | undefined
     if (props.tool === 'Read' && (input.offset !== undefined || input.limit !== undefined)) {
       const start = nonnegativeInteger(input.offset) && input.offset > 0 ? input.offset : 1

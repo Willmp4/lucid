@@ -1,17 +1,24 @@
 import { atom, memberOf, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderElement } from 'claude-code'
 
-import type { UsageMeter, UsagePlacement } from '../types'
+import type { Density, UsageMeter, UsagePlacement } from '../types'
 import { EDIT_TOOLS, blockOf, drawBlock } from './block'
+import { densityCommand, densityOf } from './density'
+import { drawGroup, groupOf } from './group-card'
 import { drawReply, hasTable, replyColumns } from './reply'
 import { splitReply } from './reply-table'
 import { CARD_TOOLS, cardOf, drawCard } from './tool-card'
 import { metersOf, placementOf, usageCommand } from './usage'
 import { drawMeters } from './usage-line'
 
+const OMP_HELP = 'usage: /omp usage above|below, or /omp density full|balanced|compact'
+
 const expandedAtom = atom({ plugin: 'omp-blocks', key: 'expanded' } as const, false)
 const durationAtom = atom({ plugin: 'omp-blocks', key: 'duration' } as const, -1)
 const usageAtom = atom({ plugin: 'omp-blocks', key: 'usage' } as const, 'above' as UsagePlacement)
+const densityAtom = atom({ plugin: 'omp-blocks', key: 'density' } as const, 'balanced' as Density)
+const openedAtom = atom({ plugin: 'omp-blocks', key: 'opened' } as const, false)
+const ungroupedAtom = atom({ plugin: 'omp-blocks', key: 'ungrouped' } as const, false)
 const metersAtom = atom({ plugin: 'omp-blocks', key: 'meters' } as const, [] as UsageMeter[])
 
 // The same figures keep the same value, so the line under the prompt is not redrawn.
@@ -20,10 +27,12 @@ async function refreshMeters($: EngineInterface): Promise<void> {
   await update($, metersAtom, previous => (JSON.stringify(previous) === JSON.stringify(meters) ? previous : meters))
 }
 
-// The stored placement and the current figures, at the start and after a reset.
-async function loadUsage($: EngineInterface): Promise<void> {
+// The stored settings and the current figures, at the start and after a reset.
+async function loadSettings($: EngineInterface): Promise<void> {
   const stored = placementOf(await $.store.get('usage'))
+  const density = densityOf(await $.store.get('density'))
   await update($, usageAtom, () => stored)
+  await update($, densityAtom, () => density)
   await refreshMeters($)
 }
 
@@ -40,18 +49,33 @@ async function skinsMarkdown($: EngineInterface, text: string, columns: number):
 // Unsupported tools and nonterminal surfaces keep their native or skins rendering.
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'omp', description: 'omp-blocks settings: /omp usage above|below', argumentHint: 'usage above|below' })
-    await loadUsage($)
+    await $.command.register({
+      name: 'omp',
+      description: 'omp-blocks settings: /omp usage above|below, /omp density full|balanced|compact',
+      argumentHint: 'usage above|below | density full|balanced|compact',
+    })
+    await loadSettings($)
     return next(e)
   })
 
   // /clear, /resume and /branch reset $.state to its defaults and skip session.start.
   on('classic.SessionStart', { source: ['clear', 'resume', 'fork'] }, async ($, e, next) => {
-    await loadUsage($)
+    await loadSettings($)
     return next(e)
   })
 
   on('command.run', { command: 'omp' }, async ($, e) => {
+    const setting = e.args.trim().toLowerCase().split(/\s+/)[0]
+    if (setting === 'density') {
+      const result = densityCommand(e.args, await read($, densityAtom))
+      if (result.density !== undefined) {
+        const density = result.density
+        await $.store.set('density', density)
+        await update($, densityAtom, () => density)
+      }
+      return { text: result.text }
+    }
+    if (setting !== 'usage') return { text: OMP_HELP }
     const result = usageCommand(e.args, await read($, usageAtom))
     if (result.placement !== undefined) {
       const placement = result.placement
@@ -118,7 +142,31 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
     if (e.surface !== 'terminal' || !e.props.calls.some(call => CARD_TOOLS[call.tool] === true)) return next(e)
-    return next({ ...e, props: { ...e.props, isExpanded: true } })
+    const forced = { ...e, props: { ...e.props, isExpanded: true } }
+    const density = await read($, densityAtom)
+    if (density === 'full') return next(forced)
+    const group = groupOf(e.props.calls, await $.session.cwd())
+    if (group === null) return next(forced)
+
+    // Show all marks each call, so its own row draws the full level's card.
+    const mark = (value: boolean) => () => {
+      void Promise.all(group.ids.map(requestId => update($, memberOf(ungroupedAtom, { requestId }), () => value)))
+    }
+    const ui = $.ui.resolve(e)
+    const { Box, Button } = ui
+    if ((await Promise.all(group.ids.map(requestId => read($, memberOf(ungroupedAtom, { requestId }))))).some(Boolean)) {
+      return (
+        <Box flexDirection="column" width="100%">
+          {await next(forced)}
+          <Button key="merge-group" label="Collapse" onPress={mark(false)} plain />
+        </Box>
+      )
+    }
+    const opening = memberOf(openedAtom, e)
+    const opened = density === 'compact' && await read($, opening)
+    return drawGroup(ui, group, { density, opened, toggleOpen: () => {
+      void update($, opening, previous => !previous)
+    } }, mark(true))
   })
 
   on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
@@ -126,16 +174,32 @@ export const register: Register = on => {
     const isEdit = EDIT_TOOLS.has(e.props.tool)
     if (!isEdit && CARD_TOOLS[e.props.tool] !== true) return next(e)
     const cwd = await $.session.cwd()
-    if (isEdit) return drawBlock($.ui.resolve(e), blockOf(e.props, cwd))
+    const density = await read($, densityAtom)
+    if (isEdit) {
+      const block = blockOf(e.props, cwd, density)
+      if (density === 'full') return drawBlock($.ui.resolve(e), block)
+      const opening = memberOf(expandedAtom, e)
+      const opened = density === 'compact' && await read($, opening)
+      return drawBlock($.ui.resolve(e), block, { density, opened, toggleOpen: () => {
+        void update($, opening, previous => !previous)
+      } })
+    }
 
     const card = cardOf(e.props, cwd)
     if (card === null) return next(e)
     const expansion = memberOf(expandedAtom, e)
     const expanded = await read($, expansion)
     const duration = e.props.tool === 'Bash' ? await read($, memberOf(durationAtom, e)) : -1
-    return drawCard($.ui.resolve(e), card, expanded, () => {
+    const toggle = () => {
       void update($, expansion, previous => !previous)
-    }, duration)
+    }
+    // A call of a merged group the user split apart draws as the full level draws it.
+    if (density === 'full' || await read($, memberOf(ungroupedAtom, e))) return drawCard($.ui.resolve(e), card, expanded, toggle, duration)
+    const opening = memberOf(openedAtom, e)
+    const opened = density === 'compact' && await read($, opening)
+    return drawCard($.ui.resolve(e), card, expanded, toggle, duration, { density, opened, toggleOpen: () => {
+      void update($, opening, previous => !previous)
+    } })
   })
 
   // Hide a separate result only when the tool card can display its full payload.

@@ -11,9 +11,12 @@ reads, and searches share rounded borders and compact output previews.
 | Grep | Pattern, scope, grouped matches, and pagination totals |
 | Glob | Pattern, scope, returned file count, and matching paths |
 
-Click **Show all** to expand long Bash, Read, Grep, or Glob output, and
-**Collapse** to restore its preview. Errors remain visible. Edit and Write
-retain their fixed diff previews.
+A card's body shows what the user acts on: the end of shell output, where
+test totals and exit status print, and the diffs to review. A run of reads and
+searches shares one card with a row per call. Click **Show all** to expand a
+card or to split a merged run into its own cards, and **Collapse** to restore
+it. Failed calls always open in full. `/omp density` sets how much each card
+shows.
 
 Peach bold tool labels, cyan paths, and softer ordinary output share one
 palette across all six tools. Shell commands distinguish commands, flags,
@@ -35,6 +38,20 @@ sessions.
 | `/omp usage above` | The context and plan-limit meters stay in the skins band above the prompt, with its Compact button. The default |
 | `/omp usage below` | The meters move to a line under the prompt, and the band above the prompt draws nothing |
 | `/omp usage` | Shows the current placement |
+| `/omp density balanced` | Card bodies show what the user acts on. The default |
+| `/omp density compact` | Each card shows one header line and opens on **Show ▸** |
+| `/omp density full` | Cards show their full previews, and every run of calls draws one card per call |
+| `/omp density` | Shows the current level |
+
+The density level sets each card's body:
+
+| Card | `full` | `balanced` | `compact` |
+|---|---|---|---|
+| A run of Read, Grep, and Glob calls | One card per call | One card with a row per call: its path or pattern and its summary. **Show all** splits the run into `full` cards | One header line that counts the calls; **Show ▸** opens the rows |
+| Read, Grep, or Glob on its own | The first 16 rows | The header and summary; the rows open on **Show all (N rows)** | One header line; **Show ▸** opens the `balanced` body |
+| Bash | The first 16 stdout rows; the duration on the summary line | The last 4 stdout rows; `✓` or `✗` and the duration on the header row | One header line with `✓` or `✗` and the duration; **Show ▸** opens the `balanced` body |
+| Edit and Write | Up to 40 diff rows or 20 new-file rows | Up to 12 rows | One header line with the counts; **Show ▸** opens the 12 rows |
+| A failed call | Every row and a red border | Every row and a red border | Every row and a red border |
 
 ## Requirements
 
@@ -114,9 +131,15 @@ if you also want to remove its styling.
 - Terminal-only presentation: desktop and other surfaces retain their rendering
 - Tool inputs, results, permissions, and the content Claude receives stay unchanged
 - Images, PDFs, notebooks, background jobs, and unknown result formats keep native controls
-- Successful shell/read/search previews show 16 rows; stderr remains visible past the preview limit
+- At `full`, successful shell/read/search previews show 16 rows; below it, shell previews show the last 4 stdout rows and read/search cards show their summary
+- Stderr, error rows, and the `Full output` and `Raw output` artifact rows never fold
+- Below `full`, an interrupted call opens in full with a red border, as a failed call does
+- A run that mixes in any other tool stays one card per call; its cards follow the density level
+- A run whose calls carry no input or output, or whose output a card cannot summarise, stays one card per call
+- Splitting a merged run marks the calls it holds; a call that joins a live run afterwards draws its `balanced` card
+- Compact header lines cut long commands and paths with `…`; an open card shows them whole
 - Search pagination reports the tool's supplied totals; expansion cannot recover output the tool omitted
-- Tool-call expansion state is independent for each card
+- Tool-call expansion state is independent for each card and each merged run
 - The palette matches OMP's dark Catppuccin-style cards; it does not follow light themes
 - Semantic highlighting preserves text and whitespace; status words never determine tool success or failure
 - Conservative lexical spans require no syntax-highlighter dependency; shell/read/search cards retain terminal-control sanitization
@@ -161,9 +184,9 @@ then run:
 claude --plugin-dir .
 ```
 
-The tests cover rendering, expansion transitions, native fallbacks, errors,
-line offsets, blank matches, search pagination, lossless semantic spans,
-token boundaries, and colour precedence. [SPEC.md](SPEC.md) describes the
+The tests cover rendering, the three density levels, merged runs, expansion
+transitions, native fallbacks, errors, line offsets, blank matches, search
+pagination, lossless semantic spans, token boundaries, and colour precedence. [SPEC.md](SPEC.md) describes the
 renderer and live smoke checks.
 
 ## License

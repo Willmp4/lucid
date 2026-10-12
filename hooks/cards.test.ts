@@ -1,5 +1,6 @@
 import type { On, RenderElement } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
 import { COLORS } from './text-style'
 
 const STOCK: RenderElement = { type: 'Text', props: {}, children: ['native rendering'] }
@@ -7,13 +8,21 @@ const SITE = { plugin: 'omp-blocks', surface: 'terminal', component: 'ToolUse', 
 const props = (tool: string, input: unknown, output: unknown, extra: object = {}) => ({
   tool_use_id: 'card1', tool, input, output, isRunning: false, isErrored: false, isInterrupted: false, ...extra,
 })
-function setup(on: On) {
+// These cards describe the full level: today's previews and forced-open groups.
+async function setup($: Engine, on: On) {
+  const store = new Map<string, unknown>()
+  on('store.get', (_$, e) => ({ value: store.get(e.key) }))
+  on('store.set', (_$, e) => {
+    store.set(e.key, e.value)
+    return { value: undefined }
+  })
   on('session.cwd', () => ({ value: '/work' }))
   on('ui.render', () => STOCK)
+  await $.command.run({ command: 'omp', args: 'density full', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
 }
 
 test('Bash shows its command and keeps stderr visible beyond a long stdout preview', async ($, on) => {
-  setup(on)
+  await setup($, on)
   const ui = await $.ui.mount({ ...SITE, requestId: 'bash1', props: props('Bash', { command: 'run-check' }, {
     stdout: Array.from({ length: 30 }, (_, i) => `log ${i}`).join('\n'), stderr: 'compiler failed', interrupted: false,
   }) })
@@ -23,7 +32,7 @@ test('Bash shows its command and keeps stderr visible beyond a long stdout previ
 })
 
 test('Read retains the returned starting line and file content', async ($, on) => {
-  setup(on)
+  await setup($, on)
   const ui = await $.ui.mount({ ...SITE, requestId: 'read1', props: props('Read', { file_path: '/work/src/a.ts', offset: 42 }, {
     type: 'text', file: { filePath: '/work/src/a.ts', content: 'const answer = 42;\nreturn answer;', startLine: 42, numLines: 2, totalLines: 80 },
   }) })
@@ -35,7 +44,7 @@ test('Read retains the returned starting line and file content', async ($, on) =
 })
 
 test('Grep groups numbered matches without repeating the path on each line', async ($, on) => {
-  setup(on)
+  await setup($, on)
   const ui = await $.ui.mount({ ...SITE, requestId: 'grep1', props: props('Grep', { pattern: 'needle', path: '/work/src', output_mode: 'content' }, {
     mode: 'content', numFiles: 1, filenames: [], content: '/work/src/a.ts:4:needle one\n/work/src/a.ts:9:needle two', numLines: 2,
   }) })
@@ -47,7 +56,7 @@ test('Grep groups numbered matches without repeating the path on each line', asy
 })
 
 test('Glob shows paths and the count of matching files', async ($, on) => {
-  setup(on)
+  await setup($, on)
   const ui = await $.ui.mount({ ...SITE, requestId: 'glob1', props: props('Glob', { pattern: '**/*.ts', path: '/work' }, {
     durationMs: 7, numFiles: 2, filenames: ['/work/src/a.ts', '/work/src/b.ts'], truncated: false,
   }) })
@@ -57,7 +66,7 @@ test('Glob shows paths and the count of matching files', async ($, on) => {
 })
 
 test('long output expands and collapses independently for each call', async ($, on) => {
-  setup(on)
+  await setup($, on)
   const output = { durationMs: 1, numFiles: 40, filenames: Array.from({ length: 40 }, (_, i) => `/work/file-${i}.ts`), truncated: false }
   const first = await $.ui.mount({ ...SITE, requestId: 'glob-long1', props: props('Glob', { pattern: '*.ts' }, output) })
   const second = await $.ui.mount({ ...SITE, requestId: 'glob-long2', props: props('Glob', { pattern: '*.ts' }, output) })
@@ -72,7 +81,7 @@ test('long output expands and collapses independently for each call', async ($, 
 })
 
 test('a failed Bash call keeps every error line visible', async ($, on) => {
-  setup(on)
+  await setup($, on)
   const output = Array.from({ length: 35 }, (_, i) => `failure detail ${i}`).join('\n')
   const ui = await $.ui.mount({ ...SITE, requestId: 'bash-error', props: props('Bash', { command: 'failing-check' }, output, { isErrored: true, isRunning: true }) })
   expect(await ui.find({ type: 'Text', text: 'failure detail 34' })).toBeDefined()
@@ -80,7 +89,7 @@ test('a failed Bash call keeps every error line visible', async ($, on) => {
 })
 
 test('nontext Read results retain native rendering at both sites', async ($, on) => {
-  setup(on)
+  await setup($, on)
   const output = { type: 'image', file: { base64: 'image-data', type: 'image/png', originalSize: 10 } }
   const call = props('Read', { file_path: '/work/image.png' }, output)
   const use = await $.ui.mount({ ...SITE, requestId: 'image1', props: call })
@@ -94,7 +103,7 @@ test('nontext Read results retain native rendering at both sites', async ($, on)
 })
 
 test('background Bash keeps its native task controls', async ($, on) => {
-  setup(on)
+  await setup($, on)
   const output = { stdout: '', stderr: '', interrupted: false, backgroundTaskId: 'job1' }
   const use = await $.ui.mount({ ...SITE, requestId: 'background1', props: props('Bash', { command: 'long-job' }, output) })
   const result = await $.ui.mount({ ...SITE, component: 'ToolResult', requestId: 'background1', props: {
@@ -107,7 +116,7 @@ test('background Bash keeps its native task controls', async ($, on) => {
 })
 
 test('semantic card spans preserve every displayed character and soften ordinary output', async ($, on) => {
-  setup(on)
+  await setup($, on)
   const command = 'printf -- "%s" handoff/ready.md'
   const text = '  12:34:56\tPASS  handoff/ready.md in 1.2s  '
   const ui = await $.ui.mount({ ...SITE, requestId: 'semantic-bash', props: props('Bash', { command }, {
@@ -128,7 +137,7 @@ test('semantic card spans preserve every displayed character and soften ordinary
 })
 
 test('explicit failed calls and stderr retain red precedence over markers and paths', async ($, on) => {
-  setup(on)
+  await setup($, on)
   const text = 'PASS handoff/ready.md WARN 1.2s'
   for (const failed of [false, true]) {
     const ui = await $.ui.mount({ ...SITE, requestId: `semantic-error-${failed}`, props: props('Bash', { command: 'check' }, {
@@ -143,7 +152,7 @@ test('explicit failed calls and stderr retain red precedence over markers and pa
 })
 
 test('authoritative file paths take precedence over status names and ambiguous scope separators', async ($, on) => {
-  setup(on)
+  await setup($, on)
   const glob = await $.ui.mount({ ...SITE, requestId: 'semantic-glob', props: props('Glob', {
     pattern: 'PASS · **/*', path: '/work/a · b',
   }, { numFiles: 2, filenames: ['/work/PASS', '/work/a file'], truncated: false }) })
@@ -163,7 +172,7 @@ test('authoritative file paths take precedence over status names and ambiguous s
 })
 
 test('artifact and counted filename ranges preserve their labels and numeric suffixes', async ($, on) => {
-  setup(on)
+  await setup($, on)
   const bash = await $.ui.mount({ ...SITE, requestId: 'semantic-artifact', props: props('Bash', { command: 'check' }, {
     stdout: '', stderr: '', persistedOutputPath: '/work/PASS with spaces', interrupted: false,
   }) })
@@ -179,7 +188,7 @@ test('artifact and counted filename ranges preserve their labels and numeric suf
 })
 
 test('long semantic lines keep their unstyled tail after the span limit', async ($, on) => {
-  setup(on)
+  await setup($, on)
   const text = `${'PASS handoff/ready.md '.repeat(40)}untouched tail  `
   const ui = await $.ui.mount({ ...SITE, requestId: 'semantic-budget', props: props('Bash', { command: 'check' }, {
     stdout: text, stderr: '', interrupted: false,
@@ -189,7 +198,7 @@ test('long semantic lines keep their unstyled tail after the span limit', async 
 })
 
 test('semantic spans retain output that fits near the serialized tree limit', async ($, on) => {
-  setup(on)
+  await setup($, on)
   const text = `${'PASS '.repeat(24)}${'x'.repeat(98500)}`
   const bash = await $.ui.mount({ ...SITE, requestId: 'semantic-tree-bash', props: props('Bash', { command: 'check' }, {
     stdout: text, stderr: '', interrupted: false,

@@ -9,15 +9,18 @@ keeps drawing unsupported tools and payloads.
 Tool calls share rounded borders, shortened paths, and consistent status
 colors. Edit and Write show line-numbered diffs. Shell commands, reads,
 and searches show useful previews with controls to expand long output.
-The mod changes presentation only: tool inputs, results, permissions, and
-the content Claude receives stay unchanged.
+A card's body shows what the user acts on, at a density level the user
+sets. The mod changes presentation only: tool inputs, results,
+permissions, and the content Claude receives stay unchanged.
 
 ## Scope
 
 In scope:
 
 - The `ToolUse` and `ToolResult` rows of Edit, Write, Bash, Read, Grep, and Glob
-- Expanded `ToolGroup` rows for supported shell, read, and search calls
+- `ToolGroup` rows that hold supported shell, read, and search calls: one
+  merged card or the group forced open
+- The card density, set by `/omp density`
 - Terminal `AssistantMessage` rows that hold a markdown table
 - The usage meters' placement: `AbovePrompt` and `PromptHint`, set by `/omp usage`
 - The `terminal` surface
@@ -27,7 +30,7 @@ Out of scope:
 - Unsupported tools and unknown result formats, which pass through to skins
 - The `desktop`, `vscode`, and `mobile` surfaces, which pass through
 - Image, PDF, notebook, and background-command payloads, which keep native UI
-- Expand/collapse controls for Edit/Write diffs and full programming-language
+- Expanding an Edit/Write diff past its row cap, and full programming-language
   syntax highlighting
 - Reading the skins palette; this mod's colours are fixed
 - Voice output, parked for a later design
@@ -45,8 +48,12 @@ installations use Claude Code's plugin cache.
 | `hooks/register.tsx` | Hook wiring: chooses which rows this mod draws |
 | `hooks/block.tsx` | Pure functions: tool output to header and rows, rows to a tree |
 | `hooks/block.test.ts` | Tests for `block.tsx` and the pass-through rules |
-| `hooks/card-model.ts` | Shared card rows and terminal text sanitization |
-| `hooks/tool-card.tsx` | Card frame, previews, and expansion controls |
+| `hooks/card-model.ts` | Shared card rows, the density view, and terminal text sanitization |
+| `hooks/tool-card.tsx` | Card frame, previews by density level, and expansion controls |
+| `hooks/group-card.tsx` | A run of reads and searches as one card: per-call rows and the merged header |
+| `hooks/density.ts` | `/omp density` parsing and the stored level |
+| `hooks/density.test.ts` | Level parsing, the command, persistence, and the reload after `/clear` |
+| `hooks/levels.test.ts` | Each level's cards, merged groups and their fallbacks, compact expansion, failures, and caps |
 | `hooks/text-style.tsx` | Shared palette, conservative lexical spans, and bounded inline rendering |
 | `hooks/text-style.test.ts` | Token boundaries, shell quoting, lossless offsets, and span-budget boundaries |
 | `hooks/bash-card.ts` | Shell output, failures, and artifact links |
@@ -59,10 +66,12 @@ installations use Claude Code's plugin cache.
 | `hooks/usage.ts` | Meter figures and `/omp usage` parsing |
 | `hooks/usage-line.tsx` | The meter line drawn under the prompt |
 | `hooks/usage.test.ts` | Meter text, the command, placement persistence, and both slots |
-| `types/index.d.ts` | Per-call expansion, elapsed time, usage placement, and meter state declarations |
+| `types/index.d.ts` | Per-call expansion, opening, and splitting; elapsed time; usage placement; density; and meter state declarations |
 
-The mod keeps expansion and Bash duration in `$.state` families keyed by
-the tool call's render request ID. Each call expands independently.
+The mod keeps expansion, compact opening, merged-group splitting, and Bash
+duration in `$.state` families keyed by the render request ID: a tool
+call's, or a merged group's for its compact opening. Each call expands
+independently.
 
 ## Hook order
 
@@ -90,8 +99,62 @@ in each open Claude Code session; subsequent sessions load the order at startup.
 - Hide the separate result only when the card handles that payload
 - Otherwise return `next(e)` so native content and controls remain visible
 
-A terminal `ToolGroup` containing Bash, Read, Grep, or Glob passes
-`isExpanded: true` to `next`, so the group cannot hide the individual cards.
+`ui.render` on `{ component: 'ToolGroup' }`, for a terminal group that holds
+Bash, Read, Grep, or Glob:
+
+- At `full`, pass `isExpanded: true` to `next`, so the group cannot hide the
+  individual cards
+- Below `full`, draw one merged card when every call is Read, Grep, or Glob
+  and each call carries the data its card needs, as the following section
+  describes; otherwise pass `isExpanded: true` to `next`
+
+An expanded group draws each result inside its `ToolUse` row, and a merged
+card replaces those rows. A separate `ToolResult` belongs to a standalone
+row only, and the rule above holds at every level: each card reaches its
+whole payload through **Show all**, and through **Show ▸** first at
+`compact`.
+
+## Card density
+
+`/omp density full|balanced|compact` stores the level under the store key
+`density` and holds it in the `density` atom. `session.start` and
+`classic.SessionStart` with the sources `clear`, `resume`, and `fork` load
+it, as they load the usage placement. A stored value other than the three
+levels reads as `balanced`, the default. `/omp density` reports the level; a
+typed value other than the three levels shows the usage line and changes
+nothing. `/omp` with neither setting's name shows one usage line for both.
+
+| Level | Purpose |
+|---|---|
+| `full` | The longest previews: forced-open groups, 16-row previews, 40-row diffs, and 20-row new-file previews |
+| `balanced` | A card's body shows what the user acts on: shell results at the end of the output, diffs, and failures |
+| `compact` | Each card is one header line inside its border; **Show ▸** opens the `balanced` body |
+
+A failed call opens in full at every level. Below `full`, an interrupted
+call does too, and its border turns red.
+
+### Merged read and search groups
+
+Below `full`, a terminal `ToolGroup` whose calls are all Read, Grep, or Glob
+draws one bordered card:
+
+- **Header:** each tool with its call count, in order of first appearance:
+  `Read 3 files · Grep 1 pattern`. Read counts files; Grep and Glob count
+  patterns. Tool names use the label colour
+- **Rows:** one per call: its path, or `pattern · scope`, in the path colour,
+  in a column up to 48 cells wide, followed by the summary its own card
+  shows. A failed or interrupted call's rows follow its row in full, and the
+  border turns red
+- **Show all:** marks each call in the `ungrouped` family and draws the group
+  forced open, its calls as `full` cards, with **Collapse** beneath. A call
+  that joins a live group after the split draws its `balanced` card
+- **Compact:** the header alone with **Show ▸**, which opens the rows and the
+  **Show all** button; **Collapse** closes them. A group with a failed or
+  interrupted call opens without the button
+
+A group stays forced open, with each card on the current level's rules, when
+any call is another tool, has no `tool_use_id`, has no input, has no output
+once settled, or produces no card (`cardOf` returns `null`).
 
 ## Bash, Read, and search cards
 
@@ -102,9 +165,30 @@ A terminal `ToolGroup` containing Bash, Read, Grep, or Glob passes
 | Grep | Pattern and scope; file headings and line numbers where parsing is unambiguous; raw text otherwise |
 | Glob | Pattern and scope, returned file count, and shortened matching paths |
 
-Successful output previews show the first 16 rows. Stderr remains visible
-past that limit. Click **Show all** to expand a card and **Collapse** to
-restore its preview. Failed calls never fold their output.
+What a card's body previews depends on the density level:
+
+| Level | Bash | Read, Grep, and Glob |
+|---|---|---|
+| `full` | The first 16 rows; the duration follows the summary | The first 16 rows |
+| `balanced` | The last 4 stdout rows; artifact rows, stderr, and error rows stay | The header and summary; error rows stay |
+| `compact` | The header line until **Show ▸**, then the `balanced` body | The header line until **Show ▸**, then the `balanced` body |
+
+Stderr and error rows never fold. Click **Show all** to expand a card and
+**Collapse** to restore its preview. At `full` the button counts the rows it
+reveals, `Show all (n more rows)`; below it the button counts every row,
+`Show all (n rows)`. Failed calls never fold their output.
+
+Below `full`, a settled Bash call's status and duration stand at the right
+of the header row: `✓ 4.2s` in the success colour, or `✗ 4.2s` in the
+failure colour for a failed or interrupted call. The summary line stays only
+for text beyond the status: the return-code interpretation, or
+`Interrupted`. A call restored without timing data shows the marker alone.
+
+At `compact`, the header row holds the title, the Bash marker, and
+**Show ▸**; the title truncates with `…` to keep one line. **Show ▸** opens
+the `balanced` body under the whole title, and **Collapse** at the right of
+the header closes it. A failed or interrupted card opens without the
+button.
 
 Bash timing wraps the existing call and forwards its result unchanged.
 Calls restored without timing data omit duration rather than estimate it.
@@ -193,7 +277,7 @@ One row: `✎ `, the tool name, `: `, the path, two spaces, and the counts.
 | Running | `isRunning` and `output === undefined` | None |
 | Interrupted | `isInterrupted` | `Interrupted` in `#f9e2af` |
 | Errored | `isErrored` | The first line of the output text in `#f38ba8` |
-| New file | `Write` with `output.type === "create"` | The first 20 lines of `output.content` as added rows, numbered from 1 |
+| New file | `Write` with `output.type === "create"` | The first lines of `output.content` as added rows, numbered from 1, up to the length cap |
 | Diff | `output.structuredPatch` has hunks | Diff rows, described in the following section |
 | No diff | `structuredPatch` is empty | `no changes shown` in `#7f849c` |
 
@@ -240,10 +324,19 @@ The background shading of these colours comes from the Catppuccin Mocha
 
 ### Length cap
 
-- A diff body shows at most 40 rows, counting `…` separators
-- A new-file body shows at most 20 rows
+- At `full`, a diff body shows at most 40 rows, counting `…` separators, and
+  a new-file body at most 20 rows
+- Below `full`, either body shows at most 12 rows
 - Past the cap, one final row reads `… n more lines` in `#7f849c`, where `n`
   counts the rows left out
+
+### Compact header
+
+At `compact`, an Edit or Write block draws its header alone, cut with `…` to
+one line, with its counts and **Show ▸** at the right. **Show ▸** opens the
+capped rows and **Collapse** closes them; the state is the call's member of
+`expanded`. A failed or interrupted block opens with a red border and no
+button.
 
 ## Reply tables
 
@@ -332,6 +425,15 @@ persistence, the band hidden and restored, a survey keeping the band, the
 meter line above the hint line, and the reload after `/clear`.
 Rendered-text queries use exact matches for individual styles; precedence
 checks permit nested or inherited spans but reject conflicting colours.
+
+`hooks/density.test.ts` covers level parsing, the command's replies and its
+registration, store persistence, the fallback for a stored unknown level,
+and the reload after `/clear`. `hooks/levels.test.ts` covers `full` against
+today's previews, the `balanced` Bash tail and header marker, `balanced`
+single-card summaries, merged groups with their split, fallbacks, and mixed
+groups, compact header lines and their expansion, failures at every level,
+the 12-row Edit and Write cap, and result hiding at every level. The card
+suites in `hooks/cards.test.ts` run at `full`.
 
 Verification before reporting completion:
 

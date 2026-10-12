@@ -20,6 +20,7 @@ export function formatBash(props: CallProps, cwd: string): CardContent | null {
       summary: props.isInterrupted ? 'Interrupted' : props.isErrored ? 'Failed' : props.isRunning ? 'Running' : 'Pending',
       rows: [],
       failed: props.isErrored,
+      ...(props.isInterrupted ? { status: 'interrupted', detail: 'Interrupted' } : props.isErrored ? { status: 'failed' } : {}),
     }
   }
 
@@ -43,6 +44,8 @@ export function formatBash(props: CallProps, cwd: string): CardContent | null {
   const interpretation = cleanText(textOf(output.returnCodeInterpretation)).trim()
   const status = interrupted ? 'Interrupted' : failed ? 'Failed' : ''
   const summary = [status, interpretation].filter(Boolean).join(' · ') || undefined
+  // A marker shows failure; an interruption keeps its word beside it.
+  const detail = [interrupted ? 'Interrupted' : '', interpretation].filter(Boolean).join(' · ') || undefined
   const persistedPath = textOf(output.persistedOutputPath)
   const rawPath = textOf(output.rawOutputPath)
   const rows: CardRow[] = []
@@ -64,5 +67,5 @@ export function formatBash(props: CallProps, cwd: string): CardContent | null {
     rows.push({ text: persistedPath !== '' || rawPath !== '' ? 'No inline output' : 'No output', kind: 'muted' })
   }
 
-  return { title, summary, rows, failed }
+  return { title, summary, rows, failed, status: interrupted ? 'interrupted' : failed ? 'failed' : 'ok', detail }
 }
