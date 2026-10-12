@@ -28,6 +28,14 @@ Markdown tables in Claude's replies draw as box-drawn grids. When a table is
 wider than the pane, its widest columns narrow and long cells wrap onto extra
 lines, so no cell loses text. The rest of the reply keeps the skins drawing.
 
+A code block in a reply that is longer than skins' 9,000-character limit,
+such as a long file Claude prints, draws in the skins colours too. The block
+splits at line boundaries into consecutive cards, each under the limit, and
+each card shows every line it holds.
+
+Two keywords in a prompt act on Claude's reply: `tldr` folds it to a short
+summary, and `speak` reads it aloud. See [Reading keywords](#reading-keywords).
+
 ## Settings
 
 The `/omp` command holds this mod's settings. Each setting persists across
@@ -111,6 +119,45 @@ Each folded line takes one terminal row at any pane width, cut with `…`.
   `Bash: <command> · moved to background after 120s`, or
   `Bash: <command> · running in background`
 
+## Reading keywords
+
+Two keywords in a prompt act on Claude's reply instead of reaching Claude:
+
+| Keyword | Effect |
+|---|---|
+| `tldr` or `tl;dr` | Folds the reply to a summary of one to three lines that Claude Haiku writes. **Show ▸** opens the reply under the summary, and **Collapse** folds it again |
+| `speak` | Reads the reply aloud with the system synthesizer, one sentence at a time |
+
+A keyword counts in any letter case, as a whole word, and only at the start
+or the end of the prompt, so `speak` inside a sentence stays an ordinary word.
+Several keywords can share the start or the end, separated by spaces or
+commas. Keywords at the start can end with `:` or `,`, and keywords at the
+end with `.`. As you type, the prompt box paints each counting keyword in
+rainbow colours.
+
+| Prompt | Result |
+|---|---|
+| `tldr: what changed?` | Claude receives `what changed?`, and the reply folds to its summary |
+| `speak, fix the failing test` | Claude receives `fix the failing test`, and the reply is read aloud when the turn ends |
+| `fix the failing test. tldr speak` | Claude receives `fix the failing test.`, and the summary is read aloud once it is ready |
+| `ask them to speak first` | Claude receives the whole prompt: `speak` is neither at the start nor at the end |
+| `tldr` | No turn starts. The previous reply's summary appears as a `TLDR · previous reply` row |
+| `speak` | No turn starts. The previous reply is read aloud |
+
+- While Haiku writes the summary, the reply shows `Summarizing…` beneath it.
+  A summary that fails, or takes longer than 30 seconds, leaves the reply as it
+  was, with `TLDR failed:` and the reason beneath it
+- Speech skips code blocks, tables, and HTML, and reads a link as its text and
+  a bare URL as "link". `tldr speak` reads the summary, or the reply when the
+  summary fails
+- The next prompt you send stops a reading after the sentence it is speaking
+- Speech uses the system's default voice (`say` on macOS). When the
+  synthesizer fails, a `Speech failed:` toast shows the cause
+- Only prompts you type count; prompts from other mods, peers, and the SDK
+  pass unchanged
+- Each keyword acts on one reply. After `/clear`, a keyword alone finds no
+  previous reply until Claude answers again
+
 ## Requirements
 
 - Claude Code 2.1.296 or later with mods enabled; verification uses 2.1.296
@@ -187,7 +234,7 @@ if you also want to remove its styling.
 ## Behavior and limits
 
 - Terminal-only presentation: desktop and other surfaces retain their rendering
-- Tool inputs, results, permissions, and the content Claude receives stay unchanged
+- Tool inputs, results, and permissions stay unchanged; the content Claude receives changes only by the reading keywords this mod removes from a prompt you type
 - Images, PDFs, notebooks, background jobs, and unknown result formats keep native controls; at `blackbox`, a background job folds into its block
 - At `full`, successful shell/read/search previews show 16 rows; below it, shell previews show the last 4 stdout rows and read/search cards show their summary
 - At `blackbox`, a turn folds only when the level was set as the turn started; earlier turns, and a resumed session's history, draw at `compact`
@@ -206,12 +253,20 @@ if you also want to remove its styling.
 - Inline highlighting has a node budget; remaining text stays visible in its base colour
 - Reply tables draw on the terminal only; a reply with a table loses the skins `copy reply` button
 - Tables inside fenced code blocks stay code
+- The cards of a code block past 9,000 characters have no fold or **Copy** controls, so they show every line whatever `/skin fold` holds; the reply loses the skins `copy reply` button
+- A reply keeps Claude Code's own drawing when its prose outside code blocks runs past 9,000 characters in one stretch, or when the reply passes about 53,000 characters, near the host's limit on the size of a drawing
+- Each `tldr` makes one Claude Haiku call of at most 300 output tokens
+- The TLDR fold draws on the terminal only; a `tldr` alone leaves the previous reply as drawn, since it might sit in scrollback
+- Claude Code keeps the text of a prompt a mod drops, so a keyword alone stays in the prompt box after it runs
 - With the meters below the prompt, a survey still takes the band above it
 - Claude Code's renderer retains its own size and terminal limitations
 
 Mods run with Claude Code's access to your machine. Install only code you
 trust. This mod observes Bash calls to measure their duration and changes
-render events; it does not approve permissions or replace tool execution.
+render events; it does not approve permissions or replace tool execution. It
+removes reading keywords from the prompts you type, sends a reply to Claude
+Haiku when you ask for its summary, and speaks through the system
+synthesizer when you ask for speech.
 
 ## Troubleshooting
 
@@ -246,7 +301,9 @@ claude --plugin-dir .
 
 The tests cover rendering, the four density levels, turn blocks, merged runs, expansion
 transitions, native fallbacks, errors, line offsets, blank matches, search
-pagination, lossless semantic spans, token boundaries, and colour precedence. [SPEC.md](SPEC.md) describes the
+pagination, lossless semantic spans, token boundaries, and colour precedence.
+They also cover long code blocks, the reading keywords, the TLDR block, and
+speech, with the model and the synthesizer stubbed. [SPEC.md](SPEC.md) describes the
 renderer and live smoke checks.
 
 ## License

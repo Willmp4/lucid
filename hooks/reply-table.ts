@@ -8,7 +8,7 @@ export type Segment = { kind: 'text'; text: string } | Table
 export type Style = 'plain' | 'header' | 'code' | 'bold' | 'border'
 export type Run = { text: string; style: Style }
 
-const FENCE = /^ {0,3}(`{3,}|~{3,})/
+export const FENCE = /^ {0,3}(`{3,}|~{3,})/
 const DELIMITER_CELL = /^:?-+:?$/
 const WIDE = /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦\u{1F300}-\u{1FAFF}]/u
 // A column narrows to its longest word, up to this many cells, before words break.

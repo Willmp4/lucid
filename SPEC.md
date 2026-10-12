@@ -2,7 +2,8 @@
 
 A Claude Code mod that draws Edit, Write, Bash, Read, Grep, and Glob calls
 as bordered cards in the style of the oh-my-pi (OMP) harness. The skins mod
-keeps drawing unsupported tools and payloads.
+keeps drawing unsupported tools and payloads. Two prompt keywords fold a
+reply to a short summary or read it aloud.
 
 ## Goal
 
@@ -11,7 +12,9 @@ colors. Edit and Write show line-numbered diffs. Shell commands, reads,
 and searches show useful previews with controls to expand long output.
 A card's body shows what the user acts on, at a density level the user
 sets. The mod changes presentation only: tool inputs, results,
-permissions, and the content Claude receives stay unchanged.
+permissions, and the content Claude receives stay unchanged. The one
+exception is a reading keyword, which the mod removes from the prompt
+before Claude receives it.
 
 ## Scope
 
@@ -23,8 +26,12 @@ In scope:
 - The card density, set by `/omp density`
 - At the `blackbox` level, each run of a main-loop turn's calls, drawn as one
   block that Claude's text ends
-- Terminal `AssistantMessage` rows that hold a markdown table
+- Terminal `AssistantMessage` rows that hold a markdown table, or a fenced
+  code block over skins' 9,000-character cap
 - The usage meters' placement: `AbovePrompt` and `PromptHint`, set by `/omp usage`
+- The reading keywords `tldr` and `speak`: their highlight in the prompt box,
+  their removal from the prompt, a reply's TLDR fold, and speech through the
+  system synthesizer
 - The `terminal` surface
 
 Out of scope:
@@ -36,7 +43,10 @@ Out of scope:
 - Expanding an Edit/Write diff past its row cap, and full programming-language
   syntax highlighting
 - Reading the skins palette; this mod's colours are fixed
-- Voice output, parked for a later design
+- A reading mode that persists across turns; each keyword acts on one reply
+- A choice of voice; speech uses the synthesizer's default voice
+- Folding a reply that scrolled away before its keyword-only `tldr` arrived;
+  that summary draws as a row of its own instead
 
 ## Location and files
 
@@ -71,17 +81,27 @@ installations use Claude Code's plugin cache.
 | `hooks/reply-table.ts` | Pure functions: reply to text and table segments, tables to wrapped box-drawn lines |
 | `hooks/reply.tsx` | Draws a reply's tables and hands its other text to skins |
 | `hooks/reply-table.test.ts` | Splitting, cell parsing, widths, wrapping, and the rendered reply |
+| `hooks/long-fence.ts` | Pure functions: a fence over the cap to pieces under it |
+| `hooks/long-fence.test.ts` | Splitting at line boundaries, long lines, language labels, and the rendered reply |
+| `hooks/keywords.ts` | Pure functions: a prompt to its counting keywords, their letter ranges, and the text left for Claude |
+| `hooks/keywords.test.ts` | Matching, removal, keyword-only prompts, and highlight ranges |
+| `hooks/tldr.ts` | The summary request and its result, cut to the line limit |
+| `hooks/tldr-block.tsx` | The TLDR block: folded, open, pending, and failed. Named apart from `tldr.ts`, since one import path cannot name both |
+| `hooks/speech.ts` | Pure functions: reply markdown to sentences for speech |
+| `hooks/speech.test.ts` | Markdown stripping, sentence splits, and the utterance length cap |
+| `hooks/reading.test.ts` | The keywords through session events: marks, the fold, the previous reply, speech order and stopping, and failures |
 | `hooks/usage.ts` | Meter figures and `/omp usage` parsing |
 | `hooks/usage-line.tsx` | The meter line drawn under the prompt |
 | `hooks/usage.test.ts` | Meter text, the command, placement persistence, and both slots |
-| `types/index.d.ts` | Per-call expansion, opening, and splitting; elapsed time; usage placement; density; meter; and turn-record state declarations |
+| `types/index.d.ts` | Per-call expansion, opening, and splitting; elapsed time; usage placement; density; meter; turn-record; and reading state declarations |
 
 The mod keeps expansion, compact opening, merged-group splitting, and Bash
 duration in `$.state` families keyed by the render request ID: a tool
 call's, or a merged group's for its compact opening. Each call expands
 independently. At `blackbox` it also keeps each turn's record of its blocks,
 keyed by the turn ID; each call's turn, keyed by its `tool_use_id`; and each
-block's open state, keyed by its first call's `tool_use_id`.
+block's open state, keyed by its first call's `tool_use_id`. The reading
+keywords keep their state as the Reading keywords section describes.
 
 ## Hook order
 
@@ -495,7 +515,8 @@ button.
 
 skins draws each table row on one line and cuts a cell that outgrows its
 column with `…`. omp-blocks draws a terminal `AssistantMessage` whose text
-holds a table, so the tables wrap; a reply without a table returns `next(e)`.
+holds a table, so the tables wrap. A reply that holds neither a table nor a
+fence over the cap in the Long code blocks section returns `next(e)`.
 
 - **Detection:** a line with a pipe, followed by a delimiter row whose cells
   match `:?-+:?` and whose cell count equals the header's. Body rows continue
@@ -520,6 +541,199 @@ holds a table, so the tables wrap; a reply without a table returns `next(e)`.
 - **Other text:** each text segment draws through `$.skins.markdown`, so code
   blocks, charts, and math keep the skins look. Where skins draws nothing, or
   is absent, the segment draws as Claude Code's `Markdown`
+
+## Long code blocks
+
+skins draws a reply only when every text segment and every fence in it is at
+most 9,000 characters (`MAX_MARKDOWN` in the skins mod's `hooks/reply.ts`).
+One longer block hands the whole reply back to Claude Code's drawing, which
+shows every line without colour. A long file printed in a reply, such as a
+run's `INTENT.md`, crosses that cap.
+
+- **Detection:** a fence, read as the table splitter reads fences (three or
+  more backticks or tildes), whose raw text, markers included, exceeds 9,000
+  characters
+- **Split:** the fence's body splits at line boundaries into pieces. Each
+  piece repeats the opening line, language label included, and the closing
+  marker, and its raw text stays at most 9,000 characters. A single line
+  longer than a piece can hold splits at that length. The pieces hold every
+  line once, in order
+- **Drawing:** the reply draws as its segments in order: text, tables, and
+  fence pieces. Text and each piece draw through `$.skins.markdown`, and
+  tables draw as the Reply tables section describes. Where skins draws
+  nothing, or is absent, a segment draws as Claude Code's `Markdown`
+- **Pass-through:** a reply keeps `next(e)` when a text segment outside every
+  fence exceeds 9,000 characters, since Claude Code's `Markdown` takes at most
+  10,000 characters a block. It also keeps `next(e)` when the reply's estimated
+  tree passes 80 % of the host's tree limit: the host refuses a tree of more
+  than 20,000 nodes, strings included, and draws its own; it sets no limit on
+  a tree's serialized size. The estimate scales the reply's length by 0.3 nodes
+  a character, the densest ratio measured from skins' drawing of a
+  9,000-character fence (0.06 to 0.27 across TypeScript, Python, Markdown, and
+  JSON), so a reply past about 53,000 characters keeps `next(e)`
+- **Folds and copy:** `$.skins.markdown` draws no fold or copy controls, so
+  each piece shows whole whatever `/skin fold` holds, and the reply has no
+  **Copy** button. A reply that fits the cap keeps skins' drawing, where
+  `/skin fold off` shows its blocks whole
+
+`/skin fold off` changes only what skins draws itself: reply code blocks
+and tables, the opened rows of tools this mod leaves to skins (Agent,
+WebFetch, and MCP tools), and the shell output of the Bash calls this mod
+hands back (background jobs and image output). The cards at every density
+level read no skins setting.
+
+## Reading keywords
+
+Two words in a prompt act on Claude's reply instead of reaching Claude:
+`tldr` folds a reply to a short summary, and `speak` reads a reply aloud. Each
+keyword acts on one reply; nothing carries into the next turn.
+
+### Matching
+
+- A keyword is `tldr`, `tl;dr`, or `speak`, in any letter case, as a whole
+  word: no letter, digit, `-`, or `_` touches it on either side
+- `speak` is an ordinary word, so a keyword counts only inside a run at the
+  start or the end of the prompt. A run is one or more keywords separated by
+  whitespace or `,`
+- A leading run can end in `:` or `,`. A trailing run can end in `.`
+- `speak, fix the failing test`, `tldr: what changed?`, and
+  `fix the failing test. tldr speak` each count. `ask them to speak first`
+  does not
+- The other text is the prompt with the run, its trailing `:`, `,`, or `.`,
+  and the surrounding whitespace removed
+- Keywords count only in the user's own prompts, whose `origin.kind` is
+  `composer`. Prompts from a plugin, a peer, the SDK, or a bridge pass
+  unchanged
+
+### Highlight
+
+`prompt.edit` calls `next(e)`, then adds one decoration for each letter of
+each counting keyword in the answer's text. The letters cycle through the
+theme keys Claude Code paints `ultrathink` with: `rainbow_red`,
+`rainbow_orange`, `rainbow_yellow`, `rainbow_green`, `rainbow_blue`,
+`rainbow_indigo`, and `rainbow_violet`. Decorations already on the answer
+stay. A word that stops counting, such as a trailing `speak` that more text
+follows, loses its colour on that edit.
+
+The theme resolves each key: a live session drew them as Claude Code's dark
+theme holds them, from `rgb(235,95,87)` to `rgb(200,130,180)`, so no hex
+value stands in.
+
+### Submit
+
+`prompt.submit`, for a prompt whose keywords count:
+
+| Prompt | Result |
+|---|---|
+| Keywords and other text | `next({ ...e, text })` with the other text. The turn the prompt starts carries the keywords as its marks |
+| Keywords only | `{ drop: reason }`. The keywords act on the previous reply |
+| No counting keyword | `next(e)` |
+
+A prompt submitted while a turn runs (`e.turnId` set) marks that turn.
+Otherwise the marks wait in `pendingMarks`, and the next main-loop
+`turn.start` takes them.
+
+The drop reason reads `Summarizing the previous reply`, `Reading the previous
+reply aloud`, or `Summarizing and reading the previous reply`. With no
+previous reply in this session, it reads `No reply yet`, and nothing else
+runs.
+
+Every `composer` prompt, keywords or not, stops speech in progress after the
+sentence it is speaking.
+
+### Replies
+
+`session.append` on the main loop, at the `response` door, records each row
+that holds text: `lastReply` takes its `uuid` and text, and during a marked
+turn `turnReply` takes its `uuid` for that turn. The turn's last text row is
+its final reply.
+
+`turn.complete` on the main loop with `reason` `answer` runs the turn's
+marks on `e.answer` and the final reply's row. Any other reason drops the
+marks. A turn with no text row runs nothing.
+
+An `AssistantMessage` render's `requestId` equals the `uuid` that
+`session.append` recorded for the row, as a live session confirmed, so the
+TLDR state is keyed by that `uuid`.
+
+### TLDR
+
+The summary is one `$.model.complete` call:
+
+| Field | Value |
+|---|---|
+| `model` | `haiku` |
+| `system` | `Summarize a coding assistant's reply for the person who asked for it. Write one to three short lines of plain text with no headings or lists. Lead with the outcome. Copy any question the reply asks the reader, and any failure it reports, word for word.` |
+| `prompt` | The reply's text inside `<reply>` and `</reply>` |
+| `maxTokens` | 300 |
+| `effort` | `low` |
+| `timeoutMs` | 30,000 |
+
+The result keeps its first six nonblank lines, trimmed. A result with no
+text, an API error, or a timeout fails with that reason.
+
+The hook starts the call and returns without waiting for it. The `tldr`
+family, keyed by the reply's row, holds `pending`, `ready` with the text, or
+`failed` with the reason. A marked final reply draws:
+
+| State | Drawing |
+|---|---|
+| `pending` | The reply's usual drawing, then a muted `Summarizing…` line |
+| `ready`, folded (the default) | A rounded block in the card border colour: the label `TLDR`, the summary wrapped to the width, and **Show ▸**. The reply stays hidden |
+| `ready`, open | The block with **Collapse** in place of **Show ▸**, then the reply's usual drawing |
+| `failed` | The reply's usual drawing, then a muted `TLDR failed: <reason>` line |
+
+The usual drawing is what this mod draws for the reply without a mark: its
+tables and long fences, or `next(e)`.
+
+A keyword-only `tldr` summarizes `lastReply` the same way and writes the
+result with `$.ui.log`, whose rows hold one line each: a
+`TLDR · previous reply` row, then the summary's lines joined into one row, or
+one `TLDR failed: <reason>` row. The previous reply keeps its drawing, since it might
+sit in scrollback, where a redraw does not reach.
+
+### Speech
+
+The text for speech comes from the reply's markdown:
+
+- Fenced code blocks, tables, and HTML drop out
+- Headings, list markers, emphasis, and quote markers lose their markers
+- A link reads as its text, inline code as its text, and a bare URL as
+  `link`
+- The text splits into sentences after `.`, `!`, or `?` followed by
+  whitespace, and at every blank line, heading, and list item. A sentence over 4,096 characters, the
+  synthesizer's cap, splits at the last whitespace under it
+
+Sentences play in order, one `$.audio.speak` call each, with the default
+voice. A `speech` counter holds the current reading. A `composer` prompt and
+another reading each advance it, and a reading stops before any sentence whose
+counter value is out of date. One reading plays at a time.
+
+| Marks | What plays |
+|---|---|
+| `speak` | The reply, when the turn ends |
+| `tldr speak` | The summary once it is `ready`. A failed summary reads the reply instead |
+| Keyword-only `speak` | `lastReply`, at once |
+| Keyword-only `tldr speak` | The summary of `lastReply`, once it is ready |
+
+A rejected `speak` call stops the reading and shows a toast: `Speech failed:
+<cause>`. A reply with no text left after stripping plays nothing.
+
+### State
+
+| Atom or family | Key | Holds |
+|---|---|---|
+| `pendingMarks` | none | The keywords of a prompt whose turn has not started |
+| `marks` | turn ID | The turn's keywords |
+| `readingTurn` | none | The main-loop turn running, for the rows that follow its marks |
+| `turnReply` | turn ID | The `uuid` of the turn's last text row |
+| `lastReply` | none | The `uuid` and text of the last main-loop text row |
+| `tldr` | reply row | `pending`, `ready`, or `failed` |
+| `tldrOpen` | reply row | Whether the block is open |
+| `speech` | none | The current reading's counter |
+
+`/clear`, `/resume`, and `/branch` reset `$.state`. After them, a
+keyword-only prompt finds no previous reply until Claude answers again.
 
 ## Usage meter placement
 
@@ -573,6 +787,29 @@ fitting, word wrap and word breaking, wide characters, a long cell drawn in
 full at exactly the budget width, inline code and bold, row rules, and
 pass-through for replies without tables and for the desktop surface.
 
+`hooks/long-fence.test.ts` covers a fence at exactly 9,000 characters and
+one past it, the pieces' language labels and line order, a line longer than
+a piece, a reply that holds both a table and a long fence, a long prose
+segment and an oversized reply that keep `next(e)`, and the desktop surface.
+
+`hooks/keywords.test.ts` covers each keyword in each letter case, `tl;dr`,
+leading and trailing runs with their punctuation, a keyword in the middle of
+a prompt, a keyword inside a longer word, keyword-only prompts, the text left
+for Claude, and the letter ranges of the highlight. `hooks/speech.test.ts`
+covers code blocks, tables, and HTML dropped; markers stripped; links, inline
+code, and bare URLs; sentence splits; and the 4,096-character cap.
+
+`hooks/reading.test.ts` drives session events with a stubbed `$.model` and
+`$.audio`. It covers the highlight's decorations beside existing ones, the
+prompt rewrite and its marks, a prompt submitted mid-turn, keyword-only
+drops and their reasons, no previous reply, each TLDR state and the
+**Show ▸** and **Collapse** transitions, the summary request's fields and
+the six-line cut, a summary that fails or times out, an aborted turn, the
+previous reply's `$.ui.log` row, speech order, a prompt that stops a reading
+after its sentence, `tldr speak` with a ready and a failed summary, a
+rejected `speak` call, subagent turns, prompts from other origins, and the
+desktop surface.
+
 `hooks/usage.test.ts` covers the meter line, the command's replies, store
 persistence, the band hidden and restored, a survey keeping the band, the
 meter line above the hint line, and the reload after `/clear`.
@@ -625,3 +862,14 @@ The extended smoke check exercises Bash success and intentional failure,
 a Read starting at line three, all Grep modes with paginated results,
 single-file blank matches, and Glob. A long Read reveals its final line
 after **Show all** and hides it again after **Collapse**.
+
+The reading smoke check runs in the same session:
+
+1. `fix nothing, reply with three paragraphs. tldr` lights `tldr` as it is
+   typed, and the reply folds to a TLDR block that **Show ▸** opens
+2. A keyword-only `tldr` writes a `TLDR · previous reply` row and starts no
+   turn
+3. `speak` reads the previous reply aloud, and a following prompt stops it
+   after the sentence in progress
+4. A reply that prints a 10,000-character file draws it coloured, as
+   consecutive cards, and draws it whole with `/skin fold off`

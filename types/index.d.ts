@@ -22,6 +22,17 @@ export type CallRecord = {
 // What an open call card reads: the whole input, the stored result, and the text the model read.
 export type CallBody = { input: unknown; output?: unknown; text?: string }
 
+// A reading keyword: `tldr` folds a reply to a summary, `speak` reads it aloud.
+export type Mark = 'tldr' | 'speak'
+// A main-loop row that holds text: its transcript uuid, which its render reads as `requestId`.
+export type ReplyRow = { uuid: string; text: string }
+// A reply's summary: none asked for, being written, written, or failed with its reason.
+export type Summary =
+  | { state: 'none' }
+  | { state: 'pending' }
+  | { state: 'ready'; text: string }
+  | { state: 'failed'; reason: string }
+
 declare module 'claude-code' {
   interface PluginState {
     'omp-blocks': {
@@ -38,6 +49,14 @@ declare module 'claude-code' {
       call: StateFamily<CallRecord>
       body: StateFamily<CallBody>
       unfolded: StateFamily<boolean>
+      pendingMarks: Mark[]
+      marks: StateFamily<Mark[]>
+      readingTurn: string
+      turnReply: StateFamily<string>
+      lastReply: ReplyRow
+      tldr: StateFamily<Summary>
+      tldrOpen: StateFamily<boolean>
+      speech: number
     }
   }
 }

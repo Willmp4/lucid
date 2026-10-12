@@ -45,7 +45,7 @@ test('absent Bash output does not become an empty successful result', () => {
 
   const completed = formatBash(call({ stdout: '', stderr: '', interrupted: false }), '/work')
   expect(completed?.rows).toHaveLength(1)
-  expect(completed?.rows[0].kind).toBe('muted')
+  expect(completed?.rows[0]).toEqual({ text: 'No output', kind: 'muted' })
   expect(completed?.failed).toBe(false)
 })
 

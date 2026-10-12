@@ -1,13 +1,18 @@
 import { atom, memberOf, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderElement, RenderInput } from 'claude-code'
 
-import type { CallBody, CallRecord, CallStatus, Density, TurnRecord, UsageMeter, UsagePlacement } from '../types'
+import type { CallBody, CallRecord, CallStatus, Density, Mark, ReplyRow, Summary, TurnRecord, UsageMeter, UsagePlacement } from '../types'
 import { EDIT_TOOLS, blockOf, drawBlock } from './block'
 import type { CallProps } from './block'
 import { densityCommand, densityOf } from './density'
 import { drawGroup, groupOf } from './group-card'
-import { drawReply, hasTable, replyColumns } from './reply'
-import { splitReply } from './reply-table'
+import { dropReason, keywordDecorations, readKeywords } from './keywords'
+import { replyLayout } from './long-fence'
+import { drawReply, replyColumns } from './reply'
+import { speechSentences } from './speech'
+import { summaryOf, summaryRequest } from './tldr'
+import type { Settled } from './tldr'
+import { drawTldr, drawTldrNote } from './tldr-block'
 import { CARD_TOOLS, cardOf, drawCard } from './tool-card'
 import { backgroundRow, drawTurn, genericCard } from './turn-block'
 import {
@@ -35,6 +40,16 @@ const ownerAtom = atom({ plugin: 'omp-blocks', key: 'owner' } as const, '')
 const callAtom = atom({ plugin: 'omp-blocks', key: 'call' } as const, { tool: '', input: {}, status: 'running' } as CallRecord)
 const bodyAtom = atom({ plugin: 'omp-blocks', key: 'body' } as const, { input: {} } as CallBody)
 const unfoldedAtom = atom({ plugin: 'omp-blocks', key: 'unfolded' } as const, false)
+// The reading keywords: marks waiting for their turn, each turn's marks and final reply, the
+// main loop's last reply, each reply's summary and fold, and the reading in progress.
+const pendingMarksAtom = atom({ plugin: 'omp-blocks', key: 'pendingMarks' } as const, [] as Mark[])
+const marksAtom = atom({ plugin: 'omp-blocks', key: 'marks' } as const, [] as Mark[])
+const readingTurnAtom = atom({ plugin: 'omp-blocks', key: 'readingTurn' } as const, '')
+const turnReplyAtom = atom({ plugin: 'omp-blocks', key: 'turnReply' } as const, '')
+const lastReplyAtom = atom({ plugin: 'omp-blocks', key: 'lastReply' } as const, { uuid: '', text: '' } as ReplyRow)
+const tldrAtom = atom({ plugin: 'omp-blocks', key: 'tldr' } as const, { state: 'none' } as Summary)
+const tldrOpenAtom = atom({ plugin: 'omp-blocks', key: 'tldrOpen' } as const, false)
+const speechAtom = atom({ plugin: 'omp-blocks', key: 'speech' } as const, 0)
 
 const member = (requestId: string) => ({ requestId })
 // A later outcome never softens an earlier one: an interruption outranks a failure.
@@ -186,6 +201,122 @@ async function drawTurnBlock(
   }, cwd)
 }
 
+// A terminal reply as this mod draws it before any summary: its tables wrap and its long
+// fences split into pieces skins draws; any other reply keeps the drawing beneath.
+async function drawUsual($: EngineInterface, e: RenderInput<'AssistantMessage', 'terminal'>, beneath: () => Promise<RenderElement>): Promise<RenderElement> {
+  const segments = replyLayout(e.props.text)
+  if (segments === null) return beneath()
+  const columns = replyColumns(e.viewport?.columns ?? 100)
+  const drawn: (RenderElement | undefined)[] = []
+  for (const segment of segments) drawn.push(segment.kind === 'text' ? await skinsMarkdown($, segment.text, columns) : undefined)
+  return drawReply($.ui.resolve(e), segments, columns, drawn)
+}
+
+const MARKS: readonly Mark[] = ['tldr', 'speak']
+const joined = (a: readonly Mark[], b: readonly Mark[]) => MARKS.filter(mark => a.includes(mark) || b.includes(mark))
+
+const textOf = (content: Content) =>
+  content.flatMap(block => (block.type === 'text' && typeof block.text === 'string' ? [block.text] : [])).join('\n\n')
+
+// A new reading's counter value. A prompt or another reading takes a newer one. A reset
+// $.state starts the counter again, so the clock keeps a new value apart from an old one.
+async function claimReading($: EngineInterface): Promise<number> {
+  const now = await $.clock.now()
+  let claimed = 0
+  await update($, speechAtom, previous => (claimed = Math.max(previous + 1, now)))
+  return claimed
+}
+
+// One sentence at a time while the reading holds the counter, so a prompt stops it after
+// the sentence it is speaking.
+async function readAloud($: EngineInterface, reading: number, text: string): Promise<void> {
+  for (const sentence of speechSentences(text)) {
+    if ((await read($, speechAtom)) !== reading) return
+    try {
+      await $.audio.speak(sentence)
+    } catch (error) {
+      $.ui.toast(`Speech failed: ${error instanceof Error ? error.message : String(error)}`)
+      return
+    }
+  }
+}
+
+// One summary call; a call the engine refuses to send fails with its message.
+async function summarize($: EngineInterface, reply: string): Promise<Settled> {
+  try {
+    return summaryOf(await $.model.complete(summaryRequest(reply)))
+  } catch (error) {
+    return { state: 'failed', reason: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+// The summary of a reply that may sit in scrollback: log rows, since a redraw does not
+// reach it. A log row is one line, so the summary's lines share one.
+function logSummary($: EngineInterface, summary: Settled): void {
+  if (summary.state === 'failed') {
+    $.ui.log(`TLDR failed: ${summary.reason}`)
+    return
+  }
+  $.ui.log('TLDR · previous reply')
+  $.ui.log(summary.text.split('\n').join(' '))
+}
+
+// The keywords' work on a reply, which no hook waits for: the summary, then the reading,
+// which speaks the summary once it is ready and the reply otherwise. A reply's row takes
+// its summary as a fold; without a row the summary goes to the transcript as log rows.
+async function readReply($: EngineInterface, marks: readonly Mark[], text: string, reading: number | undefined, row?: string): Promise<void> {
+  let spoken = text
+  if (marks.includes('tldr')) {
+    const summary = await summarize($, text)
+    if (row !== undefined) await update($, memberOf(tldrAtom, member(row)), () => summary)
+    else logSummary($, summary)
+    if (summary.state === 'ready') spoken = summary.text
+  }
+  if (reading !== undefined) await readAloud($, reading, spoken)
+}
+
+const detach = ($: EngineInterface, work: Promise<void>) => {
+  void work.catch(error => $.ui.log(`omp-blocks reading: ${error instanceof Error ? error.message : String(error)}`, { to: 'debug' }))
+}
+
+// A main-loop turn takes the marks of the prompt that started it.
+async function startReading($: EngineInterface, turnId: string): Promise<void> {
+  await update($, readingTurnAtom, () => turnId)
+  const pending = await read($, pendingMarksAtom)
+  if (pending.length === 0) return
+  await update($, memberOf(marksAtom, member(turnId)), previous => joined(previous, pending))
+  await update($, pendingMarksAtom, () => [])
+}
+
+// Each main-loop row that holds text is the last reply; in a marked turn it is also the
+// turn's final reply until another follows.
+async function recordReply($: EngineInterface, uuid: string, content: Content): Promise<void> {
+  const text = textOf(content)
+  if (text.trim() === '') return
+  await update($, lastReplyAtom, () => ({ uuid, text }))
+  const turnId = await read($, readingTurnAtom)
+  if (turnId !== '' && (await read($, memberOf(marksAtom, member(turnId)))).length > 0) {
+    await update($, memberOf(turnReplyAtom, member(turnId)), () => uuid)
+  }
+}
+
+// A main-loop turn's end runs its marks on its final reply, when the turn answered.
+async function finishTurn($: EngineInterface, turnId: string, reason: string, answer: string): Promise<void> {
+  if ((await read($, readingTurnAtom)) === turnId) await update($, readingTurnAtom, () => '')
+  const marking = memberOf(marksAtom, member(turnId))
+  const marks = await read($, marking)
+  if (marks.length === 0) return
+  await update($, marking, () => [])
+  const row = await read($, memberOf(turnReplyAtom, member(turnId)))
+  if (reason !== 'answer' || row === '') return
+  const last = await read($, lastReplyAtom)
+  const text = answer.trim() !== '' ? answer : last.uuid === row ? last.text : ''
+  if (text.trim() === '') return
+  const reading = marks.includes('speak') ? await claimReading($) : undefined
+  if (marks.includes('tldr')) await update($, memberOf(tldrAtom, member(row)), (): Summary => ({ state: 'pending' }))
+  detach($, readReply($, marks, text, reading, row))
+}
+
 // Unsupported tools and nonterminal surfaces keep their native or skins rendering.
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -235,6 +366,7 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     if (e.agentId === undefined) {
       await refreshMeters($)
+      await finishTurn($, e.turnId, e.reason, e.answer)
       if ((await read($, liveTurnAtom)) === e.turnId) {
         const turn = memberOf(turnAtom, member(e.turnId))
         if (e.isAborted) {
@@ -253,10 +385,11 @@ export const register: Register = on => {
   })
 
   // At the blackbox level each main-loop turn is recorded: its calls in order, in blocks that
-  // Claude's text ends.
+  // Claude's text ends. Every turn takes the reading keywords' marks.
   on('turn.start', async ($, e, next) => {
     const recording = (await read($, densityAtom)) === 'blackbox'
     await update($, liveTurnAtom, () => (recording ? e.turnId : ''))
+    await startReading($, e.turnId)
     return next(e)
   })
 
@@ -265,6 +398,7 @@ export const register: Register = on => {
     if (e.agentId === undefined && (e.door === 'response' || e.door === 'tool-result')) {
       const turnId = await read($, liveTurnAtom)
       if (turnId !== '') await recordRow($, turnId, e.door, e.message.content)
+      if (e.door === 'response') await recordReply($, e.uuid, e.message.content)
     }
     return stored
   })
@@ -307,15 +441,53 @@ export const register: Register = on => {
     )
   })
 
-  // A terminal reply holding a table: its tables wrap, its other text stays skins'.
+  // A terminal reply: its tables wrap and its long fences draw in colour, and a reply a
+  // `tldr` marked folds under its summary.
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     if (e.surface !== 'terminal') return next(e)
-    const segments = splitReply(e.props.text)
-    if (!hasTable(segments)) return next(e)
-    const columns = replyColumns(e.viewport?.columns ?? 100)
-    const drawn: (RenderElement | undefined)[] = []
-    for (const segment of segments) drawn.push(segment.kind === 'text' ? await skinsMarkdown($, segment.text, columns) : undefined)
-    return drawReply($.ui.resolve(e), segments, columns, drawn)
+    const summary = await read($, memberOf(tldrAtom, e))
+    if (summary.state === 'none') return drawUsual($, e, () => next(e))
+    const ui = $.ui.resolve(e)
+    if (summary.state === 'pending') return drawTldrNote(ui, 'Summarizing…', await drawUsual($, e, () => next(e)))
+    if (summary.state === 'failed') return drawTldrNote(ui, `TLDR failed: ${summary.reason}`, await drawUsual($, e, () => next(e)))
+    const opening = memberOf(tldrOpenAtom, e)
+    const open = await read($, opening)
+    return drawTldr(ui, summary.text, open, () => {
+      void update($, opening, previous => !previous)
+    }, open ? await drawUsual($, e, () => next(e)) : undefined)
+  })
+
+  // A counting keyword lights up as it is typed, one rainbow colour a letter.
+  on('prompt.edit', async ($, e, next) => {
+    const box = await next(e)
+    const { ranges } = readKeywords(box.text)
+    return ranges.length === 0 ? box : { ...box, decorations: [...(box.decorations ?? []), ...keywordDecorations(ranges)] }
+  })
+
+  // The reading keywords leave the user's prompt before Claude reads it, and mark the turn
+  // it starts. A prompt of keywords alone acts on the previous reply and starts no turn.
+  // Every prompt the user sends stops a reading after the sentence it is speaking.
+  on('prompt.submit', async ($, e, next) => {
+    if (e.origin.kind !== 'composer') return next(e)
+    await claimReading($)
+    const { marks, rest } = readKeywords(e.text)
+    if (marks.length === 0) return next(e)
+    if (rest === '') {
+      const last = await read($, lastReplyAtom)
+      if (last.uuid === '') return { drop: 'No reply yet' }
+      const reading = marks.includes('speak') ? await claimReading($) : undefined
+      detach($, readReply($, marks, last.text, reading))
+      return { drop: dropReason(marks) }
+    }
+    if (e.turnId !== undefined) {
+      await update($, memberOf(marksAtom, member(e.turnId)), previous => joined(previous, marks))
+      return next({ ...e, text: rest })
+    }
+    // The turn this prompt starts begins before `next` resolves, so its marks wait first.
+    await update($, pendingMarksAtom, () => marks)
+    const entered = await next({ ...e, text: rest })
+    if (entered.drop !== undefined) await update($, pendingMarksAtom, () => [])
+    return entered
   })
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {

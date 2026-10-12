@@ -19,8 +19,6 @@ const SPAN_PROPS: Record<Style, { color?: string; bold?: boolean }> = {
   border: { color: COLORS.border },
 }
 
-export const hasTable = (segments: readonly Segment[]) => segments.some(segment => segment.kind === 'table')
-
 function drawTable(ui: Ui, lines: readonly Run[][], key: string) {
   const { Box, Text } = ui
   const styled = lines.reduce((sum, line) => sum + line.length, 0) <= SPAN_BUDGET
