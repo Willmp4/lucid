@@ -41,7 +41,7 @@ sessions.
 | `/omp density balanced` | Card bodies show what the user acts on. The default |
 | `/omp density compact` | Each card shows one header line and opens on **Show ▸** |
 | `/omp density full` | Cards show their full previews, and every run of calls draws one card per call |
-| `/omp density blackbox` | Each turn's calls, and Claude's text between them, fold into one block that opens on click |
+| `/omp density blackbox` | Each turn's tool calls fold into one block that opens on click; Claude's text draws below it |
 | `/omp density` | Shows the current level |
 
 The density level sets each card's body:
@@ -55,9 +55,11 @@ The density level sets each card's body:
 | A failed call | Every row and a red border | Every row and a red border | Every row and a red border |
 
 At `blackbox`, one bordered block holds every tool call of a turn, from the
-prompt to Claude's final reply, and the text Claude writes between calls. The
-final reply, the text after the last call, stays below the block. The block
-draws where the turn's first call would, and is folded by default:
+prompt to Claude's final reply. Only the calls and their results fold;
+Claude's text never does. The block draws where the turn's first call would,
+so text Claude writes before that call stays above it, and each later message
+draws below the block in turn order, ending with the final reply. The block is
+folded by default:
 
 ```text
 ╭──────────────────────────────────────────╮
@@ -66,22 +68,42 @@ draws where the turn's first call would, and is folded by default:
 │   ✗ Bash: cat missing.txt                │
 │     cat: missing.txt: No such file       │
 ╰──────────────────────────────────────────╯
+⏺ The notes name inventory.py, so the edit goes there.
 ⏺ All seven steps ran; cat failed as planned.
 ```
 
+Each folded line takes one terminal row at any pane width, cut with `…`.
+
 - **Title:** `Editing` and the file the turn edits or writes most, with
-  `+N file` or `+N files` for the rest; otherwise `Running` and the first
-  shell command, `Reading` and the first file read, `Searching` and the first
-  search pattern, or `Using` and the first tool. A file shows its name alone
-  unless another edited file shares it
+  `+N file` or `+N files` for the rest. Otherwise the title reads a shell
+  command by what it does, not its raw text: `Running` and the first command
+  it runs, named by its program and up to two words (`Running npm test`,
+  `Running python3 inventory.py`); else `Reading` or `Searching` and the file
+  the turn's reads and searches touch most, with `+N file` or `+N files` for
+  the others (`Reading index.mjs +1 file`); else `Using` and the first tool.
+  `cat`, `head`, `tail`, `wc`, `sed -n`, and `git show`, `log`, `diff`, and
+  `status` read; `grep`, `rg`, `find`, `fd`, `ls`, and `tree` search;
+  wrappers such as `rtk proxy` and `timeout 60`, and commands such as `cd`
+  and `echo`, take no part. A file shows its name alone unless another
+  touched file shares it
 - **Status line:** the call count, the failed calls, and the turn's duration.
   While the turn runs, the line ends with the call in progress, such as
-  `· Bash: python3 toy.py`, and the duration waits for the turn to end
+  `· Bash: python3 toy.py`, or `· background` for a background job, and the
+  duration waits for the turn to end
 - **Failures:** a failed or interrupted call turns the border red and lists
-  its header and first error line, folded or open
-- **Open:** click the title to list the turn's text and calls in order, each
-  call as its `compact` card; each card's **Show ▸** opens its `balanced` body.
-  Subagent calls count as calls
+  its header and an error line, folded or open. For a shell command, the error
+  line is the first stderr line, else the last output line, so a status line
+  such as `ok` that a command wrapper prints first never stands in for the
+  error. `Exit code N` lines are skipped, and `Failed` stands in when no line
+  is left
+- **Open:** click the title to list the turn's calls in order, each as its
+  `compact` card, with no text; each card's **Show ▸** opens its `balanced`
+  body. Subagent calls count as calls
+- **Background jobs:** a shell command moved to the background, on its timeout
+  or by `run_in_background`, stays in the block, counts as a call, and never
+  counts as a failure. Open, it lists as one muted row:
+  `Bash: <command> · moved to background after 120s`, or
+  `Bash: <command> · running in background`
 
 ## Requirements
 
@@ -160,11 +182,10 @@ if you also want to remove its styling.
 
 - Terminal-only presentation: desktop and other surfaces retain their rendering
 - Tool inputs, results, permissions, and the content Claude receives stay unchanged
-- Images, PDFs, notebooks, background jobs, and unknown result formats keep native controls
+- Images, PDFs, notebooks, background jobs, and unknown result formats keep native controls; at `blackbox`, a background job folds into the turn's block
 - At `full`, successful shell/read/search previews show 16 rows; below it, shell previews show the last 4 stdout rows and read/search cards show their summary
 - At `blackbox`, a turn folds only when the level was set as the turn started; earlier turns, and a resumed session's history, draw at `compact`
 - At `blackbox`, a result the block cannot show, such as an image, keeps its own row; permission prompts and questions stay in full view
-- At `blackbox`, the newest text of a running turn shows below the block until a later call pulls it in
 - Stderr, error rows, and the `Full output` and `Raw output` artifact rows never fold
 - Below `full`, an interrupted call opens in full with a red border, as a failed call does
 - A run that mixes in any other tool stays one card per call; its cards follow the density level

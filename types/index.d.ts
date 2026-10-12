@@ -2,13 +2,19 @@ export type UsagePlacement = 'above' | 'below'
 export type UsageMeter = { label: string; percent: number; bar: string }
 export type Density = 'full' | 'balanced' | 'compact' | 'blackbox'
 
-// One entry of a turn, in the order the model wrote them: a text row by its row id, or a
-// call by its tool_use_id.
-export type TurnItem = { kind: 'text'; id: string; text: string } | { kind: 'call'; id: string }
+// One call of a turn by its tool_use_id, in the order the model wrote them.
+export type TurnItem = { kind: 'call'; id: string }
 export type TurnRecord = { items: TurnItem[]; durationMs?: number }
 export type CallStatus = 'running' | 'ok' | 'failed' | 'interrupted'
-// What a folded turn block reads of a call: long input strings are cut.
-export type CallRecord = { tool: string; input: Record<string, unknown>; status: CallStatus; error?: string }
+// What a folded turn block reads of a call: long input strings are cut. `background` marks a
+// Bash call the engine moved to the background, with the timeout that moved it.
+export type CallRecord = {
+  tool: string
+  input: Record<string, unknown>
+  status: CallStatus
+  error?: string
+  background?: { timedOutAfterMs?: number }
+}
 // What an open call card reads: the whole input, the stored result, and the text the model read.
 export type CallBody = { input: unknown; output?: unknown; text?: string }
 

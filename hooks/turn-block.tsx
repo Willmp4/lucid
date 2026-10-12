@@ -3,10 +3,10 @@ import type { CallRecord } from '../types'
 import { linesOfText } from './card-model'
 import type { CardContent } from './card-model'
 import { COLORS } from './text-style'
-import { callLabel, isBrokenCall, statusLine, titleOf } from './turn-model'
+import { backgroundLabel, callLabel, fitLine, fitParts, isBrokenCall, statusLine, titleOf } from './turn-model'
 
 // A turn's calls at the blackbox level: one bordered block, folded to its title and status
-// lines, failures always listed; open, the turn's text and a compact card per call.
+// lines, failures always listed; open, a compact card per call.
 
 export type TurnView = {
   calls: { id: string; record: CallRecord }[]
@@ -15,13 +15,18 @@ export type TurnView = {
   running?: string
   unfolded: boolean
   toggle: () => void
-  // Open: the in-between text and the call cards, in turn order.
+  // The terminal's width: each folded line keeps to one row of it.
+  columns: number
+  // Open: the call cards, in turn order.
   entries: RenderElement[]
 }
 
 const SUBJECT_COLOR: Readonly<Record<string, string>> = {
   Editing: COLORS.path, Reading: COLORS.path, Running: COLORS.command, Searching: COLORS.quote, Using: COLORS.name,
 }
+// The cells a line loses to the block's border and padding, and to each indent.
+const FRAME = 4
+const INDENT = 2
 
 export function drawTurn(ui: ElementTable<'terminal'>, view: TurnView, cwd: string) {
   const { Box, Text, Button } = ui
@@ -30,25 +35,30 @@ export function drawTurn(ui: ElementTable<'terminal'>, view: TurnView, cwd: stri
   const arrow = view.unfolded ? '▾' : '▸'
   const label = [arrow, title.verb, title.subject, title.extra].filter(Boolean).join(' ')
   const broken = view.calls.filter(call => isBrokenCall(call.record))
+  // A Button's children ignore their Text's wrap, so every folded line is cut to fit first.
+  const room = Math.max(1, view.columns - FRAME)
+  const [arrowPart, verbPart, subjectPart, extraPart] = fitParts([
+    `${arrow} `, title.verb, title.subject === '' ? '' : ` ${title.subject}`, title.extra === undefined ? '' : ` ${title.extra}`,
+  ], room)
 
   return (
     <Box flexDirection="column" width="100%" borderStyle="round" borderColor={broken.length > 0 ? COLORS.borderErr : COLORS.border} paddingX={1}>
       <Button key="turn-fold" label={label} onPress={view.toggle} plain>
         <Text wrap="truncate-end">
-          <Text color={COLORS.muted}>{`${arrow} `}</Text>
-          <Text color={COLORS.name} bold>{title.verb}</Text>
-          {title.subject === '' ? null : <Text color={SUBJECT_COLOR[title.verb]}>{` ${title.subject}`}</Text>}
-          {title.extra === undefined ? null : <Text color={COLORS.muted}>{` ${title.extra}`}</Text>}
+          <Text color={COLORS.muted}>{arrowPart}</Text>
+          {verbPart === '' ? null : <Text color={COLORS.name} bold>{verbPart}</Text>}
+          {subjectPart === '' ? null : <Text color={SUBJECT_COLOR[title.verb]}>{subjectPart}</Text>}
+          {extraPart === '' ? null : <Text color={COLORS.muted}>{extraPart}</Text>}
         </Text>
       </Button>
-      <Box paddingLeft={2}>
-        <Text color={COLORS.muted} wrap="truncate-end">{statusLine(records, view.durationMs, view.running)}</Text>
+      <Box paddingLeft={INDENT}>
+        <Text color={COLORS.muted} wrap="truncate-end">{fitLine(statusLine(records, view.durationMs, view.running), room - INDENT)}</Text>
       </Box>
       {view.unfolded ? view.entries : broken.map(call => (
-        <Box key={`broken-${call.id}`} flexDirection="column" paddingLeft={2}>
-          <Text color={COLORS.del} wrap="truncate-end">{`✗ ${callLabel(call.record, cwd)}`}</Text>
-          <Box paddingLeft={2}>
-            <Text color={COLORS.del} wrap="truncate-end">{call.record.error ?? 'Failed'}</Text>
+        <Box key={`broken-${call.id}`} flexDirection="column" paddingLeft={INDENT}>
+          <Text color={COLORS.del} wrap="truncate-end">{fitLine(`✗ ${callLabel(call.record, cwd)}`, room - INDENT)}</Text>
+          <Box paddingLeft={INDENT}>
+            <Text color={COLORS.del} wrap="truncate-end">{fitLine(call.record.error ?? 'Failed', room - 2 * INDENT)}</Text>
           </Box>
         </Box>
       ))}
@@ -65,4 +75,10 @@ export function genericCard(record: CallRecord, text: string | undefined, cwd: s
     failed,
     ...(record.status === 'running' ? {} : { status: record.status === 'ok' ? 'ok' : record.status }),
   }
+}
+
+// A call the engine moved to the background, in an open block: one muted row, no card.
+export function backgroundRow(ui: ElementTable<'terminal'>, record: CallRecord, cwd: string, columns: number) {
+  const { Text } = ui
+  return <Text color={COLORS.muted} wrap="truncate-end">{fitLine(backgroundLabel(record, cwd), Math.max(1, columns - FRAME))}</Text>
 }

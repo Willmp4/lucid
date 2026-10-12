@@ -1,6 +1,6 @@
 {
   "name": "omp-blocks",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Draws file edits, shell commands, reads, and searches as OMP-style bordered tool cards at a chosen density or folds each turn's calls into one block, wraps reply tables, and places the usage meters",
   "homepage": "https://github.com/Willmp4/omp-blocks",
   "repository": "https://github.com/Willmp4/omp-blocks",

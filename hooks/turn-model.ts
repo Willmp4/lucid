@@ -1,10 +1,13 @@
 import type { CallBody, CallRecord, CallStatus, TurnItem, TurnRecord } from '../types'
 import { errorLine, shortenPath } from './block'
 import { cleanText, recordOf, textOf } from './card-model'
+import { widthOf } from './reply-table'
+import { shellActions } from './shell-command'
+import type { ShellAction, ShellTarget } from './shell-command'
 
-// At the blackbox level a turn's calls and the text between them fold into one block. These
-// are the pure parts: what a row adds to a turn, which text a later call follows, and the
-// block's title and status line.
+// At the blackbox level a turn's calls fold into one block; Claude's text draws outside it.
+// These are the pure parts: what a row adds to a turn, a call's outcome, and the block's
+// title and status line.
 
 // The input field each editing tool names its file by.
 const EDITING: Readonly<Record<string, string>> = { Edit: 'file_path', Write: 'file_path', NotebookEdit: 'notebook_path' }
@@ -22,12 +25,6 @@ export function anchorOf(turn: TurnRecord): string | undefined {
   return turn.items.find(item => item.kind === 'call')?.id
 }
 
-// Text that a later call of the same turn follows folds into the block.
-export function isInBetween(turn: TurnRecord, id: string): boolean {
-  const at = turn.items.findIndex(item => item.kind === 'text' && item.id === id)
-  return at !== -1 && turn.items.slice(at + 1).some(item => item.kind === 'call')
-}
-
 const firstLine = (value: string) => cleanText(value).split('\n').map(line => line.trim()).find(line => line !== '') ?? ''
 const baseName = (path: string) => path.replace(/\/+$/, '').split('/').at(-1) ?? path
 
@@ -41,12 +38,10 @@ export function recordInput(input: unknown): Record<string, unknown> {
   return kept
 }
 
-// A response row's text and calls, in the order the model wrote them.
-export function responseItems(id: string, content: readonly { type: string; [field: string]: unknown }[]) {
+// A response row's calls, in the order the model wrote them.
+export function responseItems(content: readonly { type: string; [field: string]: unknown }[]) {
   const items: TurnItem[] = []
   const calls: RecordedCall[] = []
-  const text = content.filter(block => block.type === 'text').map(block => textOf(block.text)).join('')
-  if (text.trim() !== '') items.push({ kind: 'text', id, text })
   for (const block of content) {
     if (block.type !== 'tool_use' || typeof block.id !== 'string') continue
     items.push({ kind: 'call', id: block.id })
@@ -65,6 +60,64 @@ export function firstErrorLine(text: string): string {
   const at = /^Exit code \d+$/.test(lines[0] ?? '') && lines.length > 1 ? 1 : 0
   return lines[at] ?? errorLine(text)
 }
+
+const EXIT_CODE = /^Exit code \d+$/
+const outputLines = (text: string) => cleanText(text.replace(/<\/?tool_use_error>/g, ''))
+  .split('\n').map(line => line.trim()).filter(line => line !== '' && !EXIT_CODE.test(line))
+
+// A failed shell command's error: its first stderr line, else its last stdout line, where
+// errors print after any status lines a wrapper prints first.
+export function shellErrorLine(stdout: string, stderr: string): string {
+  return outputLines(stderr)[0] ?? outputLines(stdout).at(-1) ?? 'Failed'
+}
+
+// The line a folded block shows for a failed call. A shell failure's error text holds its
+// merged output and reads as stdout; a structured result keeps its streams apart.
+export function failureLine(tool: string, text: string, output?: unknown): string {
+  if (tool !== 'Bash') return firstErrorLine(text)
+  const streams = recordOf(output)
+  return typeof streams.stdout === 'string' && typeof streams.stderr === 'string'
+    ? shellErrorLine(streams.stdout, streams.stderr)
+    : shellErrorLine(text, '')
+}
+
+// A Bash result the engine moved to the background: on its timeout, or by `run_in_background`.
+export function backgroundOf(output: unknown): { timedOutAfterMs?: number } | undefined {
+  const result = recordOf(output)
+  if (typeof result.backgroundTaskId !== 'string' || result.backgroundTaskId === '') return undefined
+  return typeof result.timedOutAfterMs === 'number' ? { timedOutAfterMs: result.timedOutAfterMs } : {}
+}
+
+export const isBackgroundCall = (call: Pick<CallRecord, 'tool' | 'input' | 'background'>) =>
+  call.tool === 'Bash' && (call.background !== undefined || call.input.run_in_background === true)
+
+// `Bash: npm run build · moved to background after 120s`, or `· running in background`.
+export function backgroundLabel(call: Pick<CallRecord, 'tool' | 'input' | 'background'>, cwd: string): string {
+  const after = call.background?.timedOutAfterMs
+  return `${callLabel(call, cwd)} · ${after === undefined ? 'running in background' : `moved to background after ${Math.round(after / 1000)}s`}`
+}
+
+// Parts of one line, cut by terminal cells to `width` and ended with `…` where cut.
+export function fitParts(parts: readonly string[], width: number): string[] {
+  if (parts.reduce((sum, part) => sum + widthOf(part), 0) <= width) return [...parts]
+  let room = Math.max(0, width - 1)
+  let cut = false
+  return parts.map(part => {
+    if (cut) return ''
+    let kept = ''
+    for (const char of part) {
+      if (widthOf(char) > room) {
+        cut = true
+        return `${kept}…`
+      }
+      kept += char
+      room -= widthOf(char)
+    }
+    return kept
+  })
+}
+
+export const fitLine = (text: string, width: number) => fitParts([text], width)[0]!
 
 const resultText = (content: unknown): string => typeof content === 'string'
   ? content
@@ -110,16 +163,71 @@ function editingTitle(calls: readonly CallRecord[], cwd: string): TurnTitle | nu
   }
 }
 
-// What the turn's work is about: its edits, else its first command, read, search, or tool.
+// What a call does, for the title: a shell command by its segments, Read as a read of its file,
+// and Grep and Glob as a search of their path, else their pattern.
+function actionsOf(call: CallRecord): ShellAction[] {
+  if (call.tool === 'Bash') return shellActions(textOf(call.input.command))
+  const path = textOf(call.tool === 'Read' ? call.input.file_path : call.input.path)
+  const pattern = textOf(call.input.pattern)
+  const target: ShellTarget[] = path !== '' ? [{ kind: 'path', text: path }] : pattern !== '' ? [{ kind: 'pattern', text: pattern }] : []
+  if (call.tool === 'Read') return [{ kind: 'read', name: 'Read', targets: path === '' ? [] : target }]
+  return SEARCHING.has(call.tool) ? [{ kind: 'search', name: call.tool, targets: target }] : []
+}
+
+// A path as the working directory resolves it, so two spellings of one file count once. `~`
+// expands to the home directory the working directory sits under, where one shows.
+function resolvePath(path: string, cwd: string): string {
+  const home = /^(\/Users\/[^/]+|\/home\/[^/]+|\/root)(\/|$)/.exec(cwd)?.[1]
+  const expanded = home !== undefined && /^~(\/|$)/.test(path) ? `${home}${path.slice(1)}` : path
+  const whole = expanded.startsWith('/') || expanded.startsWith('~') ? expanded : `${cwd}/${expanded}`
+  const parts: string[] = []
+  for (const part of whole.split('/')) {
+    if (part === '..') parts.pop()
+    else if (part !== '' && part !== '.') parts.push(part)
+  }
+  return whole.startsWith('/') ? `/${parts.join('/')}` : parts.join('/')
+}
+
+// `Reading index.mjs +1 file`: the target the turn's reads and searches touch most, each call
+// counting a target once. A path outranks a pattern, which counts in `+N` as one more target.
+function touchedTitle(verb: 'Reading' | 'Searching', kind: 'read' | 'search', perCall: readonly ShellAction[][], cwd: string): TurnTitle {
+  const touches = new Map<string, { target: ShellTarget; key: string; count: number }>()
+  for (const actions of perCall) {
+    const keys = new Set<string>()
+    for (const action of actions) {
+      if (action.kind === 'run') continue
+      for (const target of action.targets) {
+        const key = target.kind === 'path' ? resolvePath(target.text, cwd) : `\u0000${target.text}`
+        if (keys.has(key)) continue
+        keys.add(key)
+        const touch = touches.get(key)
+        if (touch === undefined) touches.set(key, { target, key, count: 1 })
+        else touch.count++
+      }
+    }
+  }
+  const all = [...touches.values()]
+  const named = all.filter(touch => touch.target.kind === 'path')
+  let most: (typeof all)[number] | undefined
+  for (const touch of named.length > 0 ? named : all) if (most === undefined || touch.count > most.count) most = touch
+  if (most === undefined) return { verb, subject: cleanText(perCall.flat().find(action => action.kind === kind)?.name ?? '') }
+  const shared = named.filter(touch => baseName(touch.key) === baseName(most.key)).length > 1
+  const subject = most.target.kind === 'pattern' ? firstLine(most.target.text) : cleanText(shared ? shortenPath(most.key, cwd) : baseName(most.key))
+  const rest = all.length - 1
+  return { verb, subject, ...(rest > 0 ? { extra: `+${rest} ${rest === 1 ? 'file' : 'files'}` } : {}) }
+}
+
+// What the turn's work is about: its edits, else the first command it runs, else what it reads,
+// searches, or uses.
 export function titleOf(calls: readonly CallRecord[], cwd: string): TurnTitle {
   const editing = editingTitle(calls, cwd)
   if (editing !== null) return editing
-  const shell = calls.find(call => call.tool === 'Bash')
-  if (shell !== undefined) return { verb: 'Running', subject: firstLine(textOf(shell.input.command)) }
-  const read = calls.find(call => call.tool === 'Read')
-  if (read !== undefined) return { verb: 'Reading', subject: cleanText(baseName(textOf(read.input.file_path))) }
-  const search = calls.find(call => SEARCHING.has(call.tool))
-  if (search !== undefined) return { verb: 'Searching', subject: firstLine(textOf(search.input.pattern)) }
+  const perCall = calls.map(actionsOf)
+  const actions = perCall.flat()
+  const run = actions.find(action => action.kind === 'run')
+  if (run !== undefined) return { verb: 'Running', subject: cleanText(run.name) }
+  if (actions.some(action => action.kind === 'read')) return touchedTitle('Reading', 'read', perCall, cwd)
+  if (actions.some(action => action.kind === 'search')) return touchedTitle('Searching', 'search', perCall, cwd)
   return { verb: 'Using', subject: calls[0]?.tool ?? '' }
 }
 

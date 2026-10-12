@@ -9,8 +9,8 @@ import { drawGroup, groupOf } from './group-card'
 import { drawReply, hasTable, replyColumns } from './reply'
 import { splitReply } from './reply-table'
 import { CARD_TOOLS, cardOf, drawCard } from './tool-card'
-import { drawTurn, genericCard } from './turn-block'
-import { anchorOf, callLabel, firstErrorLine, isInBetween, recordInput, responseItems, resultsOf } from './turn-model'
+import { backgroundRow, drawTurn, genericCard } from './turn-block'
+import { anchorOf, backgroundOf, callLabel, failureLine, isBackgroundCall, isBrokenCall, recordInput, responseItems, resultsOf } from './turn-model'
 import { metersOf, placementOf, usageCommand } from './usage'
 import { drawMeters } from './usage-line'
 
@@ -23,8 +23,8 @@ const densityAtom = atom({ plugin: 'omp-blocks', key: 'density' } as const, 'bal
 const openedAtom = atom({ plugin: 'omp-blocks', key: 'opened' } as const, false)
 const ungroupedAtom = atom({ plugin: 'omp-blocks', key: 'ungrouped' } as const, false)
 const metersAtom = atom({ plugin: 'omp-blocks', key: 'meters' } as const, [] as UsageMeter[])
-// The blackbox level's record of each turn: the turn running, each turn's text and calls,
-// which turn a row belongs to, each call's outcome, and which blocks are open.
+// The blackbox level's record of each turn: the turn running, each turn's calls, which turn a
+// call belongs to, each call's outcome, and which blocks are open.
 const liveTurnAtom = atom({ plugin: 'omp-blocks', key: 'liveTurn' } as const, '')
 const turnAtom = atom({ plugin: 'omp-blocks', key: 'turn' } as const, { items: [] } as TurnRecord)
 const ownerAtom = atom({ plugin: 'omp-blocks', key: 'owner' } as const, '')
@@ -62,9 +62,9 @@ async function skinsMarkdown($: EngineInterface, text: string, columns: number):
 }
 
 // A call's outcome, from its run or its result row, whichever lands first.
-async function settle($: EngineInterface, id: string, status: CallStatus, text: string, error?: string, output?: unknown): Promise<void> {
+async function settle($: EngineInterface, id: string, status: CallStatus, text: string, error?: string, output?: unknown, background?: CallRecord['background']): Promise<void> {
   await update($, memberOf(callAtom, member(id)), call => RANK[status] < RANK[call.status] ? call : {
-    ...call, status, ...(error === undefined ? {} : { error }),
+    ...call, status, ...(error === undefined ? {} : { error }), ...(background === undefined ? {} : { background }),
   })
   await update($, memberOf(bodyAtom, member(id)), body => ({
     ...body,
@@ -75,15 +75,17 @@ async function settle($: EngineInterface, id: string, status: CallStatus, text: 
 
 type Content = { type: string; [field: string]: unknown }[]
 
-// A main-loop row of the turn running: the turn's items first, then whose rows they are.
-async function recordRow($: EngineInterface, turnId: string, door: string, uuid: string, content: Content): Promise<void> {
+// A main-loop row of the turn running: the turn's calls first, then whose calls they are.
+async function recordRow($: EngineInterface, turnId: string, door: string, content: Content): Promise<void> {
   if (door === 'tool-result') {
     for (const result of resultsOf(content)) {
-      if ((await read($, memberOf(ownerAtom, member(result.id)))) === turnId) await settle($, result.id, result.status, result.text, result.error)
+      if ((await read($, memberOf(ownerAtom, member(result.id)))) !== turnId) continue
+      const { tool } = await read($, memberOf(callAtom, member(result.id)))
+      await settle($, result.id, result.status, result.text, result.status === 'failed' ? failureLine(tool, result.text) : result.error)
     }
     return
   }
-  const { items, calls } = responseItems(uuid, content)
+  const { items, calls } = responseItems(content)
   if (items.length === 0) return
   for (const call of calls) {
     await update($, memberOf(callAtom, member(call.id)), () => call.record)
@@ -97,10 +99,11 @@ async function recordRow($: EngineInterface, turnId: string, door: string, uuid:
 
 const isPending = (props: CallProps) => props.output === undefined && !props.isErrored && !props.isInterrupted
 
-// Whether the block can show a call's result in place of its own row: a card formats it, or
-// it is text.
+// Whether the block can show a call's result in place of its own row: a card formats it, it
+// is a background job, or it is text.
 async function canShow($: EngineInterface, id: string, props: CallProps, cwd: string): Promise<boolean> {
   if (EDIT_TOOLS.has(props.tool)) return true
+  if (props.tool === 'Bash' && backgroundOf(props.output) !== undefined) return true
   if (CARD_TOOLS[props.tool] === true) return cardOf(props, cwd) !== null
   if (isPending(props)) return true
   const body = await read($, memberOf(bodyAtom, member(id)))
@@ -116,10 +119,12 @@ const propsOf = (record: CallRecord, body: CallBody): CallProps => ({
   isInterrupted: record.status === 'interrupted',
 })
 
-// One call of an open block: its compact card, keyed apart from the others.
+// One call of an open block: its compact card, keyed apart from the others; a background job
+// draws one muted row.
 async function drawCall($: EngineInterface, e: RenderInput<'ToolUse' | 'ToolGroup', 'terminal'>, id: string, cwd: string) {
   const ui = $.ui.resolve(e)
   const record = await read($, memberOf(callAtom, member(id)))
+  if (isBackgroundCall(record) && !isBrokenCall(record)) return backgroundRow(ui, record, cwd, e.viewport?.columns ?? 100)
   const body = await read($, memberOf(bodyAtom, member(id)))
   const props = propsOf(record, body)
   const opening = memberOf(openedAtom, member(id))
@@ -153,22 +158,15 @@ async function drawTurnBlock($: EngineInterface, e: RenderInput<'ToolUse' | 'Too
   const unfolded = await read($, unfolding)
   const entries: RenderElement[] = []
   if (unfolded) {
-    const { Box, Markdown } = ui
-    const columns = Math.max(20, replyColumns(e.viewport?.columns ?? 100) - 4)
-    for (const item of turn.items) {
-      if (item.kind === 'call') {
-        entries.push(<Box key={`call-${item.id}`} flexDirection="column" width="100%">{await drawCall($, e, item.id, cwd)}</Box>)
-      } else if (isInBetween(turn, item.id)) {
-        const drawn = await skinsMarkdown($, item.text, columns)
-        entries.push(<Box key={`text-${item.id}`} flexDirection="column" width="100%">{drawn ?? <Markdown text={item.text} />}</Box>)
-      }
-    }
+    const { Box } = ui
+    for (const id of ids) entries.push(<Box key={`call-${id}`} flexDirection="column" width="100%">{await drawCall($, e, id, cwd)}</Box>)
   }
   return drawTurn(ui, {
     calls,
     durationMs: turn.durationMs,
-    running: running === undefined ? undefined : callLabel(running.record, cwd),
+    running: running === undefined ? undefined : isBackgroundCall(running.record) ? 'background' : callLabel(running.record, cwd),
     unfolded,
+    columns: e.viewport?.columns ?? 100,
     toggle: () => {
       void update($, unfolding, previous => !previous)
     },
@@ -242,7 +240,7 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // At the blackbox level each main-loop turn is recorded: its text rows and calls in order.
+  // At the blackbox level each main-loop turn is recorded: its calls in order.
   on('turn.start', async ($, e, next) => {
     const recording = (await read($, densityAtom)) === 'blackbox'
     await update($, liveTurnAtom, () => (recording ? e.turnId : ''))
@@ -253,7 +251,7 @@ export const register: Register = on => {
     const stored = await next(e)
     if (e.agentId === undefined && (e.door === 'response' || e.door === 'tool-result')) {
       const turnId = await read($, liveTurnAtom)
-      if (turnId !== '') await recordRow($, turnId, e.door, e.uuid, e.message.content)
+      if (turnId !== '') await recordRow($, turnId, e.door, e.message.content)
     }
     return stored
   })
@@ -262,13 +260,14 @@ export const register: Register = on => {
   on('tool.call', async ($, e, next) => {
     const result = await next(e)
     if (e.agentId !== undefined || (await read($, memberOf(ownerAtom, member(e.tool_use_id)))) === '') return result
-    if (result.deny !== undefined) await settle($, e.tool_use_id, 'failed', result.deny, firstErrorLine(result.deny), result.deny)
+    if (result.deny !== undefined) await settle($, e.tool_use_id, 'failed', result.deny, failureLine(e.tool, result.deny), result.deny)
     else if (result.isError) {
       const text = result.text ?? (typeof result.result === 'string' ? result.result : '')
-      await settle($, e.tool_use_id, 'failed', text, firstErrorLine(text), text)
+      await settle($, e.tool_use_id, 'failed', text, failureLine(e.tool, text, result.result), text)
     } else {
       const interrupted = e.tool === 'Bash' && (result.result as { interrupted?: unknown } | undefined)?.interrupted === true
-      await settle($, e.tool_use_id, interrupted ? 'interrupted' : 'ok', result.text ?? '', interrupted ? 'Interrupted' : undefined, result.result)
+      const background = e.tool === 'Bash' ? backgroundOf(result.result) : undefined
+      await settle($, e.tool_use_id, interrupted ? 'interrupted' : 'ok', result.text ?? '', interrupted ? 'Interrupted' : undefined, result.result, background)
     }
     return result
   })
@@ -298,14 +297,6 @@ export const register: Register = on => {
   // A terminal reply holding a table: its tables wrap, its other text stays skins'.
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     if (e.surface !== 'terminal') return next(e)
-    // At blackbox, text that a later call of its turn follows draws inside the block.
-    if ((await read($, densityAtom)) === 'blackbox') {
-      const turnId = await read($, memberOf(ownerAtom, e))
-      if (turnId !== '' && isInBetween(await read($, memberOf(turnAtom, member(turnId))), e.requestId)) {
-        const { Box } = $.ui.resolve(e)
-        return <Box />
-      }
-    }
     const segments = splitReply(e.props.text)
     if (!hasTable(segments)) return next(e)
     const columns = replyColumns(e.viewport?.columns ?? 100)
