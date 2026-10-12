@@ -18,6 +18,8 @@ In scope:
 
 - The `ToolUse` and `ToolResult` rows of Edit, Write, Bash, Read, Grep, and Glob
 - Expanded `ToolGroup` rows for supported shell, read, and search calls
+- Terminal `AssistantMessage` rows that hold a markdown table
+- The usage meters' placement: `AbovePrompt` and `PromptHint`, set by `/omp usage`
 - The `terminal` surface
 
 Out of scope:
@@ -38,7 +40,7 @@ installations use Claude Code's plugin cache.
 
 | File | Purpose |
 |---|---|
-| `.claude-plugin/plugin.json` | Manifest: name `omp-blocks`, version `0.1.0` |
+| `.claude-plugin/plugin.json` | Manifest: name `omp-blocks`, version, and the skins dependency |
 | `hooks/hooks.json` | `{ "modules": ["./register.tsx"] }` |
 | `hooks/register.tsx` | Hook wiring: chooses which rows this mod draws |
 | `hooks/block.tsx` | Pure functions: tool output to header and rows, rows to a tree |
@@ -51,7 +53,13 @@ installations use Claude Code's plugin cache.
 | `hooks/file-cards.ts` | Read, Grep, and Glob result formatting |
 | `hooks/cards.test.ts` | Rendered content, fallback, and expansion transitions |
 | `hooks/bash-card.test.ts`, `hooks/file-cards.test.ts` | Tool-result boundary tests |
-| `types/index.d.ts` | Per-call expansion and elapsed-time state declarations |
+| `hooks/reply-table.ts` | Pure functions: reply to text and table segments, tables to wrapped box-drawn lines |
+| `hooks/reply.tsx` | Draws a reply's tables and hands its other text to skins |
+| `hooks/reply-table.test.ts` | Splitting, cell parsing, widths, wrapping, and the rendered reply |
+| `hooks/usage.ts` | Meter figures and `/omp usage` parsing |
+| `hooks/usage-line.tsx` | The meter line drawn under the prompt |
+| `hooks/usage.test.ts` | Meter text, the command, placement persistence, and both slots |
+| `types/index.d.ts` | Per-call expansion, elapsed time, usage placement, and meter state declarations |
 
 The mod keeps expansion and Bash duration in `$.state` families keyed by
 the tool call's render request ID. Each call expands independently.
@@ -237,6 +245,58 @@ The background shading of these colours comes from the Catppuccin Mocha
 - Past the cap, one final row reads `… n more lines` in `#7f849c`, where `n`
   counts the rows left out
 
+## Reply tables
+
+skins draws each table row on one line and cuts a cell that outgrows its
+column with `…`. omp-blocks draws a terminal `AssistantMessage` whose text
+holds a table, so the tables wrap; a reply without a table returns `next(e)`.
+
+- **Detection:** a line with a pipe, followed by a delimiter row whose cells
+  match `:?-+:?` and whose cell count equals the header's. Body rows continue
+  while lines are nonblank and hold a pipe. Lines inside a fenced code block
+  (three or more backticks or tildes) are never searched. A line indented four
+  spaces is never a header
+- **Cells:** outer pipes are dropped and `\|` stays a literal pipe. A row with
+  fewer cells than the header is padded with empty cells; extra cells are
+  dropped. Code spans draw without backticks in `#89dceb`, bold drops its
+  markers, a link draws as its text, and backslash escapes resolve
+- **Widths:** the budget is the viewport's columns less a two-column inset,
+  less the borders and one padding cell each side of every cell. Natural widths
+  that fit stay. Otherwise the widest column narrows one cell at a time down to
+  its longest word (at most 20 cells), then down to three cells
+- **Wrapping:** greedy word wrap; runs of spaces collapse; a word longer than
+  its column breaks across lines. Column alignment from the delimiter row
+  applies to every line of a cell
+- **Frame:** `╭┬╮`, `├┼┤`, and `╰┴╯` rules in `#45475a`, bold header text, and a
+  rule between body rows once any body row wraps. Each line is one `Text`
+  with `truncate-end` as a guard. Past 1,500 styled spans a table draws one
+  plain span per line
+- **Other text:** each text segment draws through `$.skins.markdown`, so code
+  blocks, charts, and math keep the skins look. Where skins draws nothing, or
+  is absent, the segment draws as Claude Code's `Markdown`
+
+## Usage meter placement
+
+`/omp usage above|below` stores the placement under the store key `usage`
+and holds it in the `usage` atom; any other value reads as `above`.
+`/omp usage` reports it, and other arguments show the usage line.
+
+| Placement | `AbovePrompt` | `PromptHint` |
+|---|---|---|
+| `above` (default) | `next(e)`: the skins band with its Compact button | `next(e)` |
+| `below` | An empty `Box`, unless a survey holds the band | The meter line, then the engine's hint line |
+
+The meter line reads `$.session.usage()`: context and each plan limit as an
+eight-cell `▰▱` bar, its percent in bold, and its label muted. The bar is
+mauve, amber from 80 %, and red from 95 %. A limit's kind reads as `5h` or
+`7d`. The `meters` atom refreshes on `session.start`, `session.measure`, a
+main-loop `turn.complete`, and a placement change; identical figures keep
+the previous value, so the line does not redraw.
+
+`/clear`, `/resume`, and `/branch` reset `$.state` and skip `session.start`,
+so `classic.SessionStart` with those sources reloads the placement and the
+figures.
+
 ## Testing
 
 `hooks/block.test.ts` covers:
@@ -260,6 +320,16 @@ visibility, and independent expand/collapse transitions.
 Semantic tests cover whole-token boundaries, escaped and incomplete shell
 quotes, exact filename/scope bounds, UTF-16 offsets, unstyled text beyond
 span and serialized-size budgets, and error/diff colour precedence.
+
+`hooks/reply-table.test.ts` covers table detection between paragraphs,
+tables inside fences, mismatched delimiter rows, escaped pipes, width
+fitting, word wrap and word breaking, wide characters, a long cell drawn in
+full at exactly the budget width, inline code and bold, row rules, and
+pass-through for replies without tables and for the desktop surface.
+
+`hooks/usage.test.ts` covers the meter line, the command's replies, store
+persistence, the band hidden and restored, a survey keeping the band, the
+meter line above the hint line, and the reload after `/clear`.
 Rendered-text queries use exact matches for individual styles; precedence
 checks permit nested or inherited spans but reject conflicting colours.
 

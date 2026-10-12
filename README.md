@@ -21,6 +21,21 @@ and quoted strings. Inline timestamps and durations stay muted; standalone
 success, warning, and failure markers use green, amber, and red. Actual
 failures, stderr, and changed diff rows keep their colour precedence.
 
+Markdown tables in Claude's replies draw as box-drawn grids. When a table is
+wider than the pane, its widest columns narrow and long cells wrap onto extra
+lines, so no cell loses text. The rest of the reply keeps the skins drawing.
+
+## Settings
+
+The `/omp` command holds this mod's settings. Each setting persists across
+sessions.
+
+| Command | Effect |
+|---|---|
+| `/omp usage above` | The context and plan-limit meters stay in the skins band above the prompt, with its Compact button. The default |
+| `/omp usage below` | The meters move to a line under the prompt, and the band above the prompt draws nothing |
+| `/omp usage` | Shows the current placement |
+
 ## Requirements
 
 - Claude Code 2.1.296 or later with mods enabled; verification uses 2.1.296
@@ -106,6 +121,9 @@ if you also want to remove its styling.
 - Semantic highlighting preserves text and whitespace; status words never determine tool success or failure
 - Conservative lexical spans require no syntax-highlighter dependency; shell/read/search cards retain terminal-control sanitization
 - Inline highlighting has a node budget; remaining text stays visible in its base colour
+- Reply tables draw on the terminal only; a reply with a table loses the skins `copy reply` button
+- Tables inside fenced code blocks stay code
+- With the meters below the prompt, a survey still takes the band above it
 - Claude Code's renderer retains its own size and terminal limitations
 
 Mods run with Claude Code's access to your machine. Install only code you

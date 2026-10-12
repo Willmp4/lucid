@@ -1,7 +1,7 @@
 {
   "name": "omp-blocks",
-  "version": "0.2.0",
-  "description": "Draws file edits, shell commands, reads, and searches as OMP-style bordered tool cards",
+  "version": "0.3.0",
+  "description": "Draws file edits, shell commands, reads, and searches as OMP-style bordered tool cards, wraps reply tables, and places the usage meters",
   "homepage": "https://github.com/Willmp4/omp-blocks",
   "repository": "https://github.com/Willmp4/omp-blocks",
   "license": "MIT",
