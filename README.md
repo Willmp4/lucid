@@ -45,7 +45,7 @@ Long code blocks keep their colours.
 Start or end a prompt with `tldr` to get a short summary under Claude's reply.
 Send `tldr` on its own to summarize the previous reply.
 
-![A three-paragraph reply drawn in full, with a TLDR block holding a short summary beneath it](docs/tldr.svg)
+![A two-paragraph reply drawn in full, with a TLDR block holding a short summary beneath it](docs/tldr.svg)
 
 `speak` reads a reply aloud the same way. It's experimental and off by
 default: turn it on with `/omp speak on`.
