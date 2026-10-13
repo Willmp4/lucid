@@ -9,7 +9,7 @@ OMP style.
   Failures show in red
 - **Densities:** choose how much each card shows
 - **Reply tables:** Markdown tables draw as grids that fit the pane
-- **`tldr` and `speak`:** fold a reply to a summary, or hear it read aloud
+- **`tldr`:** adds a short summary under a reply
 
 ## Densities
 
@@ -40,16 +40,15 @@ Long code blocks keep their colours.
 
 ![The end of a long code block in a reply: the bottom edge of the first card, then a second card of syntax-coloured TypeScript lines](docs/long-code.svg)
 
-## `tldr` and `speak`
+## `tldr`
 
-Start or end a prompt with a keyword:
+Start or end a prompt with `tldr` to get a short summary under Claude's reply.
+Send `tldr` on its own to summarize the previous reply.
 
-- `tldr`: folds the reply to a short summary
-- `speak`: reads the reply aloud
+![A three-paragraph reply drawn in full, with a TLDR block holding a short summary beneath it](docs/tldr.svg)
 
-Send a keyword on its own to act on the previous reply.
-
-![A three-paragraph reply folded by tldr to a TLDR block with a short summary and a Show button](docs/tldr.svg)
+`speak` reads a reply aloud the same way. It's experimental and off by
+default: turn it on with `/omp speak on`.
 
 ## Settings
 
@@ -57,6 +56,7 @@ Send a keyword on its own to act on the previous reply.
 |---|---|
 | `/omp density <level>` | `balanced`, `compact`, `full`, or `blackbox` |
 | `/omp usage below` | Moves the context and plan meters under the prompt. `above` moves them back |
+| `/omp speak on` | Turns on the `speak` keyword. `off`, the default, turns it off |
 | `/omp voice <name>` | Sets the voice for `speak`. The default is `Samantha` |
 
 ![The context and plan-limit meters on a line under the prompt, with nothing above the prompt](docs/usage-below.svg)

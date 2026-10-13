@@ -595,7 +595,7 @@ export const TITLES: Record<string, string> = {
   full: '/omp density full',
   'blackbox-folded': '/omp density blackbox · folded',
   'blackbox-open': '/omp density blackbox · open',
-  tldr: 'tldr · a reply folded to its summary',
+  tldr: 'tldr · a reply with its summary beneath',
   'reply-table': 'a reply table wider than the pane',
   'long-code': 'a reply code block past 9,000 characters',
   'usage-below': '/omp usage below',

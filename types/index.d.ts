@@ -22,7 +22,7 @@ export type CallRecord = {
 // What an open call card reads: the whole input, the stored result, and the text the model read.
 export type CallBody = { input: unknown; output?: unknown; text?: string }
 
-// A reading keyword: `tldr` folds a reply to a summary, `speak` reads it aloud.
+// A reading keyword: `tldr` adds a summary under a reply, `speak` reads it aloud.
 export type Mark = 'tldr' | 'speak'
 // A main-loop row that holds text: its transcript uuid, which its render reads as `requestId`.
 export type ReplyRow = { uuid: string; text: string }
@@ -55,8 +55,8 @@ declare module 'claude-code' {
       turnReply: StateFamily<string>
       lastReply: ReplyRow
       tldr: StateFamily<Summary>
-      tldrOpen: StateFamily<boolean>
       speech: number
+      speak: boolean
       voice: string
     }
   }

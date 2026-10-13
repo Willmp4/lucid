@@ -6,9 +6,10 @@ import { EDIT_TOOLS, blockOf, drawBlock } from './block'
 import type { CallProps } from './block'
 import { densityCommand, densityOf } from './density'
 import { drawGroup, groupOf } from './group-card'
-import { dropReason, keywordDecorations, readKeywords } from './keywords'
+import { MARKS, dropReason, keywordDecorations, readKeywords } from './keywords'
 import { replyLayout } from './long-fence'
 import { drawReply, replyColumns } from './reply'
+import { speakCommand, speakOf } from './speak'
 import { speechSentences } from './speech'
 import { summaryOf, summaryRequest } from './tldr'
 import type { Settled } from './tldr'
@@ -23,12 +24,13 @@ import { metersOf, placementOf, usageCommand } from './usage'
 import { drawMeters } from './usage-line'
 import { DEFAULT_VOICE, voiceCommand, voiceOf } from './voice'
 
-const OMP_HELP = 'usage: /omp usage above|below, /omp density full|balanced|compact|blackbox, or /omp voice <name>'
+const OMP_HELP = 'usage: /omp usage above|below, /omp density full|balanced|compact|blackbox, /omp speak on|off, or /omp voice <name>'
 
 const expandedAtom = atom({ plugin: 'omp-blocks', key: 'expanded' } as const, false)
 const durationAtom = atom({ plugin: 'omp-blocks', key: 'duration' } as const, -1)
 const usageAtom = atom({ plugin: 'omp-blocks', key: 'usage' } as const, 'above' as UsagePlacement)
 const densityAtom = atom({ plugin: 'omp-blocks', key: 'density' } as const, 'balanced' as Density)
+const speakAtom = atom({ plugin: 'omp-blocks', key: 'speak' } as const, false)
 const voiceAtom = atom({ plugin: 'omp-blocks', key: 'voice' } as const, DEFAULT_VOICE)
 const openedAtom = atom({ plugin: 'omp-blocks', key: 'opened' } as const, false)
 const ungroupedAtom = atom({ plugin: 'omp-blocks', key: 'ungrouped' } as const, false)
@@ -43,14 +45,13 @@ const callAtom = atom({ plugin: 'omp-blocks', key: 'call' } as const, { tool: ''
 const bodyAtom = atom({ plugin: 'omp-blocks', key: 'body' } as const, { input: {} } as CallBody)
 const unfoldedAtom = atom({ plugin: 'omp-blocks', key: 'unfolded' } as const, false)
 // The reading keywords: marks waiting for their turn, each turn's marks and final reply, the
-// main loop's last reply, each reply's summary and fold, and the reading in progress.
+// main loop's last reply, each reply's summary, and the reading in progress.
 const pendingMarksAtom = atom({ plugin: 'omp-blocks', key: 'pendingMarks' } as const, [] as Mark[])
 const marksAtom = atom({ plugin: 'omp-blocks', key: 'marks' } as const, [] as Mark[])
 const readingTurnAtom = atom({ plugin: 'omp-blocks', key: 'readingTurn' } as const, '')
 const turnReplyAtom = atom({ plugin: 'omp-blocks', key: 'turnReply' } as const, '')
 const lastReplyAtom = atom({ plugin: 'omp-blocks', key: 'lastReply' } as const, { uuid: '', text: '' } as ReplyRow)
 const tldrAtom = atom({ plugin: 'omp-blocks', key: 'tldr' } as const, { state: 'none' } as Summary)
-const tldrOpenAtom = atom({ plugin: 'omp-blocks', key: 'tldrOpen' } as const, false)
 const speechAtom = atom({ plugin: 'omp-blocks', key: 'speech' } as const, 0)
 
 const member = (requestId: string) => ({ requestId })
@@ -67,9 +68,11 @@ async function refreshMeters($: EngineInterface): Promise<void> {
 async function loadSettings($: EngineInterface): Promise<void> {
   const stored = placementOf(await $.store.get('usage'))
   const density = densityOf(await $.store.get('density'))
+  const speak = speakOf(await $.store.get('speak'))
   const voice = voiceOf(await $.store.get('voice'))
   await update($, usageAtom, () => stored)
   await update($, densityAtom, () => density)
+  await update($, speakAtom, () => speak)
   await update($, voiceAtom, () => voice)
   await refreshMeters($)
 }
@@ -216,7 +219,6 @@ async function drawUsual($: EngineInterface, e: RenderInput<'AssistantMessage', 
   return drawReply($.ui.resolve(e), segments, columns, drawn)
 }
 
-const MARKS: readonly Mark[] = ['tldr', 'speak']
 const joined = (a: readonly Mark[], b: readonly Mark[]) => MARKS.filter(mark => a.includes(mark) || b.includes(mark))
 
 const textOf = (content: Content) =>
@@ -280,6 +282,10 @@ async function readReply($: EngineInterface, marks: readonly Mark[], text: strin
   if (reading !== undefined) await readAloud($, reading, spoken)
 }
 
+// The keywords a prompt can hold: `speak` counts only while speech is on.
+const counting = async ($: EngineInterface): Promise<readonly Mark[]> =>
+  (await read($, speakAtom)) ? MARKS : ['tldr']
+
 const detach = ($: EngineInterface, work: Promise<void>) => {
   void work.catch(error => $.ui.log(`omp-blocks reading: ${error instanceof Error ? error.message : String(error)}`, { to: 'debug' }))
 }
@@ -327,8 +333,8 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'omp',
-      description: 'omp-blocks settings: /omp usage above|below, /omp density full|balanced|compact|blackbox, /omp voice <name>',
-      argumentHint: 'usage above|below | density full|balanced|compact|blackbox | voice <name>',
+      description: 'omp-blocks settings: /omp usage above|below, /omp density full|balanced|compact|blackbox, /omp speak on|off, /omp voice <name>',
+      argumentHint: 'usage above|below | density full|balanced|compact|blackbox | speak on|off | voice <name>',
     })
     await loadSettings($)
     return next(e)
@@ -348,6 +354,15 @@ export const register: Register = on => {
         const density = result.density
         await $.store.set('density', density)
         await update($, densityAtom, () => density)
+      }
+      return { text: result.text }
+    }
+    if (setting === 'speak') {
+      const result = speakCommand(e.args, await read($, speakAtom))
+      if (result.speak !== undefined) {
+        const speak = result.speak
+        await $.store.set('speak', speak ? 'on' : 'off')
+        await update($, speakAtom, () => speak)
       }
       return { text: result.text }
     }
@@ -456,25 +471,22 @@ export const register: Register = on => {
   })
 
   // A terminal reply: its tables wrap and its long fences draw in colour, and a reply a
-  // `tldr` marked folds under its summary.
+  // `tldr` marked takes its summary beneath.
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     if (e.surface !== 'terminal') return next(e)
     const summary = await read($, memberOf(tldrAtom, e))
     if (summary.state === 'none') return drawUsual($, e, () => next(e))
     const ui = $.ui.resolve(e)
-    if (summary.state === 'pending') return drawTldrNote(ui, 'Summarizing…', await drawUsual($, e, () => next(e)))
-    if (summary.state === 'failed') return drawTldrNote(ui, `TLDR failed: ${summary.reason}`, await drawUsual($, e, () => next(e)))
-    const opening = memberOf(tldrOpenAtom, e)
-    const open = await read($, opening)
-    return drawTldr(ui, summary.text, open, () => {
-      void update($, opening, previous => !previous)
-    }, open ? await drawUsual($, e, () => next(e)) : undefined)
+    const reply = await drawUsual($, e, () => next(e))
+    if (summary.state === 'pending') return drawTldrNote(ui, 'Summarizing…', reply)
+    if (summary.state === 'failed') return drawTldrNote(ui, `TLDR failed: ${summary.reason}`, reply)
+    return drawTldr(ui, summary.text, reply)
   })
 
   // A counting keyword lights up as it is typed, one rainbow colour a letter.
   on('prompt.edit', async ($, e, next) => {
     const box = await next(e)
-    const { ranges } = readKeywords(box.text)
+    const { ranges } = readKeywords(box.text, await counting($))
     return ranges.length === 0 ? box : { ...box, decorations: [...(box.decorations ?? []), ...keywordDecorations(ranges)] }
   })
 
@@ -484,7 +496,7 @@ export const register: Register = on => {
   on('prompt.submit', async ($, e, next) => {
     if (e.origin.kind !== 'composer') return next(e)
     await claimReading($)
-    const { marks, rest } = readKeywords(e.text)
+    const { marks, rest } = readKeywords(e.text, await counting($))
     if (marks.length === 0) return next(e)
     if (rest === '') {
       const last = await read($, lastReplyAtom)

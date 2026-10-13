@@ -68,3 +68,13 @@ test('the drop reason names what runs on the previous reply', () => {
   expect(dropReason(['speak'])).toBe('Reading the previous reply aloud')
   expect(dropReason(['tldr', 'speak'])).toBe('Summarizing and reading the previous reply')
 })
+
+test('with only tldr counting, speak is an ordinary word', () => {
+  expect(readKeywords('explain the cache. speak', ['tldr'])).toEqual({ marks: [], ranges: [], rest: 'explain the cache. speak' })
+  expect(readKeywords('speak, fix it', ['tldr'])).toEqual({ marks: [], ranges: [], rest: 'speak, fix it' })
+  expect(readKeywords('speak', ['tldr'])).toEqual({ marks: [], ranges: [], rest: 'speak' })
+  expect(readKeywords('fix it. tldr speak', ['tldr'])).toEqual({ marks: [], ranges: [], rest: 'fix it. tldr speak' })
+  expect(readKeywords('fix it. speak tldr', ['tldr'])).toMatchObject({ marks: ['tldr'], ranges: [{ start: 14, end: 18 }], rest: 'fix it. speak' })
+  expect(readKeywords('tldr speak', ['tldr'])).toMatchObject({ marks: ['tldr'], ranges: [{ start: 0, end: 4 }], rest: 'speak' })
+  expect(readKeywords('TL;DR: fix it', ['tldr'])).toMatchObject({ marks: ['tldr'], rest: 'fix it' })
+})

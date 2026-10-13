@@ -1,4 +1,4 @@
-import type { ModelCompleteInput, ModelCompleteResult, On, PromptEditInput, PromptEditResult, RenderElement } from 'claude-code'
+import type { ModelCompleteInput, ModelCompleteResult, On, PromptDecoration, PromptEditInput, PromptEditResult, RenderElement } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine, MockClock } from 'claude-code/testing'
 import { SUMMARY_SYSTEM } from './tldr'
@@ -9,16 +9,25 @@ const answered = (text: string): ModelCompleteResult => ({ isAnswered: true, tex
 const REPLY = 'The cache now expires after an hour. The tests pass. Should the old keys be deleted?'
 const SUMMARY = 'The cache expires after an hour and the tests pass.\nShould the old keys be deleted?'
 
+// What `/omp <args>` typed at the prompt raises.
+const omp = (args: string) => ({
+  command: 'omp', args, origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 100 },
+})
+
 // What the model and the synthesizer answer: a value, or a refusal, which rejects the call.
 type Answer<T> = T | { deny: string }
 type Options = {
+  // false leaves `/omp speak` at its default, off; otherwise each test starts with speech on.
+  speech?: boolean
+  // The decorations the prompt box holds before the mod adds its own.
+  decorations?: PromptDecoration[]
   model?: (e: ModelCompleteInput) => Answer<ModelCompleteResult> | Promise<Answer<ModelCompleteResult>>
   speak?: (text: string, index: number, voice?: string) => void | { deny: string } | Promise<void>
 }
 
-// The engine beneath the mod: the store, the prompt, the model, the synthesizer and the voice
-// it was asked for, and the transcript's log and toasts, each recorded.
-function setup(on: On, options: Options = {}) {
+// The engine beneath the mod: the store, the prompt box, the prompt, the model, the synthesizer
+// and the voice it was asked for, and the transcript's log and toasts, each recorded.
+async function setup($: Engine, on: On, options: Options = {}) {
   const clock: MockClock = mock.clock(on, { now: 1000 })
   const store = new Map<string, unknown>()
   on('store.get', (_$, e) => ({ value: store.get(e.key) }))
@@ -30,6 +39,11 @@ function setup(on: On, options: Options = {}) {
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 200000 }, rateLimits: [] } }))
   on('turn.start', (_$, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_$, e) => ({ text: e.answer }))
+  on('classic.SessionStart', () => ({}))
+  on('prompt.edit', (_$, e) => ({
+    text: e.text.slice(0, e.start) + e.inputText + e.text.slice(e.end), cursor: e.start + e.inputText.length,
+    ...(options.decorations === undefined ? {} : { decorations: options.decorations }),
+  }))
   const received: string[] = []
   on('prompt.submit', (_$, e) => {
     received.push(e.text)
@@ -60,13 +74,10 @@ function setup(on: On, options: Options = {}) {
     return { value: undefined }
   })
   on('ui.render', () => STOCK)
+  if (options.speech !== false) await $.command.run(omp('speak on'))
   return { clock, store, received, requests, spoken, voices, logs, toasts }
 }
 
-// What `/omp <args>` typed at the prompt raises.
-const omp = (args: string) => ({
-  command: 'omp', args, origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 100 },
-})
 const typed = (text: string, turnId?: string) => ({ text, wait: false, origin: { kind: 'composer' as const }, ...(turnId === undefined ? {} : { turnId }) })
 const say = ($: Engine, uuid: string, text: string, agentId?: string) => $.session.append({
   message: { type: 'assistant', role: 'assistant', content: [{ type: 'text', text }] },
@@ -103,9 +114,8 @@ const edit = ($: Engine, e: Omit<PromptEditInput, 'origin'>) =>
 // The highlight.
 
 test('the highlight paints each letter of a counting keyword beside the decorations already there', async ($, on) => {
-  setup(on)
   const theirs = { start: 0, end: 3, color: 'warning' }
-  on('prompt.edit', (_$, e) => ({ text: e.text.slice(0, e.start) + e.inputText + e.text.slice(e.end), cursor: e.start + e.inputText.length, decorations: [theirs] }))
+  await setup($, on, { decorations: [theirs] })
   const box = await edit($, { text: 'fix it. tl', cursor: 10, start: 10, end: 10, inputText: 'dr' })
   expect(box.text).toBe('fix it. tldr')
   expect(box.decorations).toEqual([
@@ -118,8 +128,7 @@ test('the highlight paints each letter of a counting keyword beside the decorati
 })
 
 test('a trailing speak loses its colour once more text follows it', async ($, on) => {
-  setup(on)
-  on('prompt.edit', (_$, e) => ({ text: e.text.slice(0, e.start) + e.inputText + e.text.slice(e.end), cursor: e.start + e.inputText.length }))
+  await setup($, on)
   const lit = await edit($, { text: 'ask them to spea', cursor: 16, start: 16, end: 16, inputText: 'k' })
   expect(lit.decorations?.length).toBe(5)
   const plain = await edit($, { text: 'ask them to speak', cursor: 17, start: 17, end: 17, inputText: ' first' })
@@ -128,8 +137,8 @@ test('a trailing speak loses its colour once more text follows it', async ($, on
 
 // The prompt and its marks.
 
-test('a prompt with keywords and text reaches Claude without them, and its turn folds under a summary', async ($, on) => {
-  const { clock, received, requests } = setup(on)
+test('a prompt with keywords and text reaches Claude without them, and its reply takes a summary beneath', async ($, on) => {
+  const { clock, received, requests } = await setup($, on)
   const entered = await turn($, 't1', 'fix nothing, reply with three paragraphs. tldr')
   expect(entered.text).toBe('fix nothing, reply with three paragraphs.')
   expect(received).toEqual(['fix nothing, reply with three paragraphs.'])
@@ -138,13 +147,13 @@ test('a prompt with keywords and text reaches Claude without them, and its turn 
   const ui = await mountReply($, 't1-reply')
   expect(await ui.find({ type: 'Text', text: 'TLDR' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: SUMMARY })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'native rendering' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: 'native rendering' })).toBeDefined()
   await ui.unmount()
 })
 
 test('the summary request carries the reply and the fixed fields, and keeps six nonblank lines', async ($, on) => {
   const long = ['one', '', '  two  ', 'three', 'four', '', 'five', 'six', 'seven', 'eight'].join('\n')
-  const { clock, requests } = setup(on, { model: () => answered(long) })
+  const { clock, requests } = await setup($, on, { model: () => answered(long) })
   await turn($, 't1', 'tldr: explain the cache')
   await clock.settle()
   expect(requests[0]).toMatchObject({ model: 'haiku', system: SUMMARY_SYSTEM, prompt: `<reply>\n${REPLY}\n</reply>`, maxTokens: 300, effort: 'low', timeoutMs: 30000 })
@@ -154,7 +163,7 @@ test('the summary request carries the reply and the fixed fields, and keeps six 
 })
 
 test('a prompt submitted while a turn runs marks that turn', async ($, on) => {
-  const { clock, received, spoken } = setup(on)
+  const { clock, received, spoken } = await setup($, on)
   await $.prompt.submit(typed('explain the cache'))
   await $.turn.start({ text: 'explain the cache', turnId: 't1' })
   await say($, 'early', 'Looking at the cache first.')
@@ -168,7 +177,7 @@ test('a prompt submitted while a turn runs marks that turn', async ($, on) => {
 })
 
 test('prompts from other origins pass unchanged and mark nothing', async ($, on) => {
-  const { clock, received, requests } = setup(on)
+  const { clock, received, requests } = await setup($, on)
   for (const kind of ['sdk', 'task-notification'] as const) {
     await $.prompt.submit({ text: 'fix it. tldr', wait: false, origin: { kind } })
   }
@@ -182,9 +191,9 @@ test('prompts from other origins pass unchanged and mark nothing', async ($, on)
 
 // The TLDR block.
 
-test('the TLDR block draws pending, then folded, open, and folded again', async ($, on) => {
+test('the reply draws in full, with Summarizing… and then the TLDR block beneath it', async ($, on) => {
   const answer = held<ModelCompleteResult>()
-  const { clock } = setup(on, { model: () => answer.promise })
+  const { clock } = await setup($, on, { model: () => answer.promise })
   await turn($, 't1', 'explain the cache. tldr')
   const ui = await mountReply($, 't1-reply')
   expect(await ui.find({ type: 'Text', text: 'Summarizing…' })).toBeDefined()
@@ -192,15 +201,14 @@ test('the TLDR block draws pending, then folded, open, and folded again', async 
   answer.settle(answered(SUMMARY))
   await clock.settle()
   await ui.redraw()
-  expect(await ui.find({ type: 'Button', text: 'Show ▸' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'native rendering' })).toBeUndefined()
-  await ui.press({ key: 'tldr-toggle' })
-  expect(await ui.find({ type: 'Button', text: 'Collapse' })).toBeDefined()
+  expect(await ui.drawn()).toMatchObject({
+    type: 'Box',
+    children: [STOCK, { type: 'Box', props: { borderStyle: 'round' } }],
+  })
+  expect(await ui.find({ type: 'Text', text: 'TLDR' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: SUMMARY })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'native rendering' })).toBeDefined()
-  await ui.press({ key: 'tldr-toggle' })
-  expect(await ui.find({ type: 'Button', text: 'Show ▸' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'native rendering' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: 'Summarizing…' })).toBeUndefined()
+  expect(await ui.find({ type: 'Button' })).toBeUndefined()
   await ui.unmount()
 })
 
@@ -210,7 +218,7 @@ for (const [label, result, reason] of [
   ['an answer with no text', answered(' \n '), 'no text'],
 ] as const) {
   test(`a summary that fails on ${label} leaves the reply and says why`, async ($, on) => {
-    const { clock } = setup(on, { model: () => result as ModelCompleteResult })
+    const { clock } = await setup($, on, { model: () => result as ModelCompleteResult })
     await turn($, 't1', 'explain the cache. tldr')
     await clock.settle()
     const ui = await mountReply($, 't1-reply')
@@ -221,7 +229,7 @@ for (const [label, result, reason] of [
 }
 
 test('a summary the engine refuses to send fails with its message', async ($, on) => {
-  const { clock } = setup(on, { model: () => ({ deny: 'model blocked' }) })
+  const { clock } = await setup($, on, { model: () => ({ deny: 'model blocked' }) })
   await turn($, 't1', 'explain the cache. tldr')
   await clock.settle()
   const ui = await mountReply($, 't1-reply')
@@ -230,7 +238,7 @@ test('a summary the engine refuses to send fails with its message', async ($, on
 })
 
 test('an aborted turn drops its marks, and the next turn has none', async ($, on) => {
-  const { clock, requests, spoken } = setup(on)
+  const { clock, requests, spoken } = await setup($, on)
   await $.prompt.submit(typed('explain the cache. tldr speak'))
   await $.turn.start({ text: 'explain the cache.', turnId: 't1' })
   await say($, 't1-reply', REPLY)
@@ -242,7 +250,7 @@ test('an aborted turn drops its marks, and the next turn has none', async ($, on
 })
 
 test('a desktop reply keeps the drawing beneath, summary or not', async ($, on) => {
-  const { clock } = setup(on)
+  const { clock } = await setup($, on)
   await turn($, 't1', 'explain the cache. tldr')
   await clock.settle()
   const ui = await mountReply($, 't1-reply', REPLY, 'desktop')
@@ -254,7 +262,7 @@ test('a desktop reply keeps the drawing beneath, summary or not', async ($, on) 
 // Keywords alone act on the previous reply.
 
 test('keywords alone drop the prompt with a reason that names what runs', async ($, on) => {
-  const { clock, received } = setup(on)
+  const { clock, received } = await setup($, on)
   await turn($, 't1', 'explain the cache')
   for (const [prompt, reason] of [
     ['tldr', 'Summarizing the previous reply'],
@@ -268,7 +276,7 @@ test('keywords alone drop the prompt with a reason that names what runs', async 
 })
 
 test('keywords alone with no previous reply drop the prompt and run nothing', async ($, on) => {
-  const { clock, requests, spoken, logs } = setup(on)
+  const { clock, requests, spoken, logs } = await setup($, on)
   expect(await $.prompt.submit(typed('tldr speak'))).toEqual({ drop: 'No reply yet' })
   await clock.settle()
   expect(requests).toHaveLength(0)
@@ -277,7 +285,7 @@ test('keywords alone with no previous reply drop the prompt and run nothing', as
 })
 
 test('a tldr alone writes the previous reply\'s summary as a log row and leaves the reply as it was', async ($, on) => {
-  const { clock, requests, logs } = setup(on)
+  const { clock, requests, logs } = await setup($, on)
   await turn($, 't1', 'explain the cache')
   await $.prompt.submit(typed('TL;DR'))
   await clock.settle()
@@ -289,7 +297,7 @@ test('a tldr alone writes the previous reply\'s summary as a log row and leaves 
 })
 
 test('a tldr alone whose summary fails logs the reason', async ($, on) => {
-  const { clock, logs } = setup(on, { model: () => ({ isAnswered: false, reason: 'aborted', usage: USAGE }) })
+  const { clock, logs } = await setup($, on, { model: () => ({ isAnswered: false, reason: 'aborted', usage: USAGE }) })
   await turn($, 't1', 'explain the cache')
   await $.prompt.submit(typed('tldr'))
   await clock.settle()
@@ -299,14 +307,14 @@ test('a tldr alone whose summary fails logs the reason', async ($, on) => {
 // Speech.
 
 test('a speak reads the reply aloud, a sentence at a time, in order', async ($, on) => {
-  const { clock, spoken } = setup(on)
+  const { clock, spoken } = await setup($, on)
   await turn($, 't1', 'speak, explain the cache', '## Result\n\nThe cache works. **All** tests pass!\n\n```sh\nnpm test\n```\n\nDone?')
   await clock.settle()
   expect(spoken).toEqual(['Result', 'The cache works.', 'All tests pass!', 'Done?'])
 })
 
 test('a speak alone reads the previous reply at once', async ($, on) => {
-  const { clock, spoken } = setup(on)
+  const { clock, spoken } = await setup($, on)
   await turn($, 't1', 'explain the cache')
   await $.prompt.submit(typed('speak'))
   await clock.settle()
@@ -315,7 +323,7 @@ test('a speak alone reads the previous reply at once', async ($, on) => {
 
 test('a prompt stops a reading after the sentence it is speaking', async ($, on) => {
   const first = held<void>()
-  const { clock, spoken } = setup(on, { speak: (_text, index) => (index === 0 ? first.promise : undefined) })
+  const { clock, spoken } = await setup($, on, { speak: (_text, index) => (index === 0 ? first.promise : undefined) })
   await turn($, 't1', 'explain the cache. speak')
   await clock.settle()
   expect(spoken).toEqual(['The cache now expires after an hour.'])
@@ -327,7 +335,7 @@ test('a prompt stops a reading after the sentence it is speaking', async ($, on)
 
 test('a new reading stops the one before it', async ($, on) => {
   const first = held<void>()
-  const { clock, spoken } = setup(on, { speak: (_text, index) => (index === 0 ? first.promise : undefined) })
+  const { clock, spoken } = await setup($, on, { speak: (_text, index) => (index === 0 ? first.promise : undefined) })
   await turn($, 't1', 'explain the cache. speak')
   await clock.settle()
   await say($, 'other', 'Another reply. It has two sentences.')
@@ -338,21 +346,21 @@ test('a new reading stops the one before it', async ($, on) => {
 })
 
 test('tldr speak reads the summary once it is ready', async ($, on) => {
-  const { clock, spoken } = setup(on)
+  const { clock, spoken } = await setup($, on)
   await turn($, 't1', 'explain the cache. tldr speak')
   await clock.settle()
   expect(spoken).toEqual(['The cache expires after an hour and the tests pass.', 'Should the old keys be deleted?'])
 })
 
 test('tldr speak reads the reply when the summary fails', async ($, on) => {
-  const { clock, spoken } = setup(on, { model: () => ({ isAnswered: false, reason: 'empty-reply', usage: USAGE }) })
+  const { clock, spoken } = await setup($, on, { model: () => ({ isAnswered: false, reason: 'empty-reply', usage: USAGE }) })
   await turn($, 't1', 'explain the cache. tldr speak')
   await clock.settle()
   expect(spoken).toEqual(['The cache now expires after an hour.', 'The tests pass.', 'Should the old keys be deleted?'])
 })
 
 test('tldr speak alone reads the previous reply\'s summary', async ($, on) => {
-  const { clock, spoken, logs } = setup(on)
+  const { clock, spoken, logs } = await setup($, on)
   await turn($, 't1', 'explain the cache')
   await $.prompt.submit(typed('tldr speak'))
   await clock.settle()
@@ -361,7 +369,7 @@ test('tldr speak alone reads the previous reply\'s summary', async ($, on) => {
 })
 
 test('a rejected speak call stops the reading and shows a toast', async ($, on) => {
-  const { clock, spoken, toasts } = setup(on, { speak: () => ({ deny: 'no synthesizer' }) })
+  const { clock, spoken, toasts } = await setup($, on, { speak: () => ({ deny: 'no synthesizer' }) })
   await turn($, 't1', 'explain the cache. speak')
   await clock.settle()
   expect(spoken).toHaveLength(1)
@@ -369,10 +377,46 @@ test('a rejected speak call stops the reading and shows a toast', async ($, on) 
   expect(toasts[0]).toMatch(/^Speech failed: .*no synthesizer/)
 })
 
+// Speech off.
+
+test('with speech off, a speak neither glows nor leaves the prompt, and nothing reads aloud', async ($, on) => {
+  const { clock, received, requests, spoken } = await setup($, on, { speech: false })
+  const box = await edit($, { text: 'fix it. spea', cursor: 12, start: 12, end: 12, inputText: 'k' })
+  expect(box.decorations).toBeUndefined()
+  const entered = await turn($, 't1', 'explain the cache. speak')
+  expect(entered.text).toBe('explain the cache. speak')
+  expect(await $.prompt.submit(typed('speak'))).toEqual({ text: 'speak' })
+  await clock.settle()
+  expect(received).toEqual(['explain the cache. speak', 'speak'])
+  expect(requests).toHaveLength(0)
+  expect(spoken).toHaveLength(0)
+})
+
+test('with speech off, tldr still counts and a speak beside it stays text', async ($, on) => {
+  const { clock, received, requests, spoken } = await setup($, on, { speech: false })
+  await turn($, 't1', 'explain the cache. speak tldr')
+  await clock.settle()
+  expect(received).toEqual(['explain the cache. speak'])
+  expect(requests).toHaveLength(1)
+  expect(spoken).toHaveLength(0)
+})
+
+test('/omp speak off stops later readings, and /omp speak on starts them again', async ($, on) => {
+  const { clock, spoken } = await setup($, on)
+  expect(await $.command.run(omp('speak off'))).toMatchObject({ text: 'speech: off' })
+  await turn($, 't1', 'explain the cache. speak')
+  await clock.settle()
+  expect(spoken).toHaveLength(0)
+  expect(await $.command.run(omp('speak on'))).toMatchObject({ text: 'speech: on' })
+  await turn($, 't2', 'explain the cache. speak')
+  await clock.settle()
+  expect(spoken).toHaveLength(3)
+})
+
 // The voice.
 
 test('each sentence goes to the synthesizer with Samantha, the default voice', async ($, on) => {
-  const { clock, spoken, voices } = setup(on)
+  const { clock, spoken, voices } = await setup($, on)
   await turn($, 't1', 'explain the cache. speak')
   await clock.settle()
   expect(spoken).toHaveLength(3)
@@ -383,7 +427,7 @@ test('each sentence goes to the synthesizer with Samantha, the default voice', a
 })
 
 test('/omp voice sets the voice of every later reading, the summary\'s too', async ($, on) => {
-  const { clock, store, voices } = setup(on)
+  const { clock, store, voices } = await setup($, on)
   expect(await $.command.run(omp('voice Eddy (English (US))'))).toMatchObject({ text: 'speech voice: Eddy (English (US))' })
   expect(store.get('voice')).toBe('Eddy (English (US))')
   await turn($, 't1', 'explain the cache. speak')
@@ -394,8 +438,7 @@ test('/omp voice sets the voice of every later reading, the summary\'s too', asy
 })
 
 test('a /clear reloads the stored voice for the next reading', async ($, on) => {
-  const { clock, store, voices } = setup(on)
-  on('classic.SessionStart', () => ({}))
+  const { clock, store, voices } = await setup($, on)
   store.set('voice', 'Daniel')
   await $.classic.SessionStart({ source: 'clear' })
   await turn($, 't1', 'explain the cache. speak')
@@ -404,7 +447,7 @@ test('a /clear reloads the stored voice for the next reading', async ($, on) => 
 })
 
 test('a voice that is not installed stops the reading and shows a toast', async ($, on) => {
-  const { clock, spoken, toasts } = setup(on, {
+  const { clock, spoken, toasts } = await setup($, on, {
     speak: (_text, _index, voice) => (voice === 'Samantha' ? undefined : { deny: `voice not installed: ${voice}` }),
   })
   await $.command.run(omp('voice Nobody'))
@@ -418,7 +461,7 @@ test('a voice that is not installed stops the reading and shows a toast', async 
 // Subagents.
 
 test('a subagent\'s rows and turns take no part', async ($, on) => {
-  const { clock, requests } = setup(on)
+  const { clock, requests } = await setup($, on)
   await say($, 'sub-row', 'A subagent reply.', 'agent-1')
   expect(await $.prompt.submit(typed('tldr'))).toEqual({ drop: 'No reply yet' })
   await $.prompt.submit(typed('explain the cache. tldr'))

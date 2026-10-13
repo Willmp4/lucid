@@ -2,45 +2,63 @@ import type { PromptDecoration } from 'claude-code'
 import type { Mark } from '../types'
 
 // The reading keywords in a prompt: `tldr` (or `tl;dr`) and `speak`, counted only in a run at
-// the start or the end of the prompt, since `speak` is an ordinary word. Pure functions: the
-// hooks live in register.tsx.
+// the start or the end of the prompt, since `speak` is an ordinary word. While speech is off,
+// only `tldr` counts. Pure functions: the hooks live in register.tsx.
 
 export type KeywordRange = { start: number; end: number }
 // The prompt's counting keywords, where each one stands, and the text left for Claude.
 export type Keywords = { marks: Mark[]; ranges: KeywordRange[]; rest: string }
 
-// A keyword as a whole word: no letter, digit, `-`, or `_` follows it.
-const WORD = String.raw`(?:tl;dr|tldr|speak)(?![\p{L}\p{N}_-])`
-const RUN = String.raw`${WORD}(?:[\s,]+${WORD})*`
-// A leading run ends in `:` or `,`, or at whitespace or the end of the prompt.
-const LEADING = new RegExp(String.raw`^\s*(${RUN})(?:\s*[:,]|(?=\s|$))`, 'iu')
-// A trailing run follows whitespace or `,`, and can end in `.`.
-const TRAILING = new RegExp(String.raw`(?:^|(?<=[\s,]))(${RUN})\.?\s*$`, 'iu')
-const EACH = /tl;dr|tldr|speak/giu
+export const MARKS: readonly Mark[] = ['tldr', 'speak']
+const SPELLINGS: Readonly<Record<Mark, string>> = { tldr: 'tl;dr|tldr', speak: 'speak' }
+
+type Patterns = { leading: RegExp; trailing: RegExp; each: RegExp }
+
+// The patterns for the keywords that count, built once for each set.
+const built = new Map<string, Patterns>()
+function patternsOf(marks: readonly Mark[]): Patterns {
+  const spellings = marks.map(mark => SPELLINGS[mark]).join('|')
+  const known = built.get(spellings)
+  if (known !== undefined) return known
+  // A keyword as a whole word: no letter, digit, `-`, or `_` follows it.
+  const word = String.raw`(?:${spellings})(?![\p{L}\p{N}_-])`
+  const run = String.raw`${word}(?:[\s,]+${word})*`
+  const patterns = {
+    // A leading run ends in `:` or `,`, or at whitespace or the end of the prompt.
+    leading: new RegExp(String.raw`^\s*(${run})(?:\s*[:,]|(?=\s|$))`, 'iu'),
+    // A trailing run follows whitespace or `,`, and can end in `.`.
+    trailing: new RegExp(String.raw`(?:^|(?<=[\s,]))(${run})\.?\s*$`, 'iu'),
+    each: new RegExp(spellings, 'giu'),
+  }
+  built.set(spellings, patterns)
+  return patterns
+}
 
 // The theme keys Claude Code paints `ultrathink` with, one letter each.
 export const RAINBOW = ['rainbow_red', 'rainbow_orange', 'rainbow_yellow', 'rainbow_green', 'rainbow_blue', 'rainbow_indigo', 'rainbow_violet'] as const
 
-const rangesIn = (run: string, at: number): KeywordRange[] =>
-  [...run.matchAll(EACH)].map(found => ({ start: at + found.index, end: at + found.index + found[0].length }))
+const rangesIn = (run: string, at: number, each: RegExp): KeywordRange[] =>
+  [...run.matchAll(each)].map(found => ({ start: at + found.index, end: at + found.index + found[0].length }))
 
-export function readKeywords(prompt: string): Keywords {
+// The prompt's keywords among those that count: both, or `tldr` alone while speech is off.
+export function readKeywords(prompt: string, counting: readonly Mark[] = MARKS): Keywords {
+  const patterns = patternsOf(counting)
   const ranges: KeywordRange[] = []
   let from = 0
-  const leading = LEADING.exec(prompt)
+  const leading = patterns.leading.exec(prompt)
   if (leading !== null) {
-    ranges.push(...rangesIn(leading[1]!, leading[0].indexOf(leading[1]!)))
+    ranges.push(...rangesIn(leading[1]!, leading[0].indexOf(leading[1]!), patterns.each))
     from = leading[0].length
   }
   let to = prompt.length
-  const trailing = TRAILING.exec(prompt.slice(from))
+  const trailing = patterns.trailing.exec(prompt.slice(from))
   if (trailing !== null) {
-    ranges.push(...rangesIn(trailing[1]!, from + trailing.index))
+    ranges.push(...rangesIn(trailing[1]!, from + trailing.index, patterns.each))
     to = from + trailing.index
   }
   if (ranges.length === 0) return { marks: [], ranges: [], rest: prompt }
   const words = ranges.map(range => prompt.slice(range.start, range.end).toLowerCase())
-  const marks = (['tldr', 'speak'] as const).filter(mark => words.some(word => word.replace(';', '') === mark))
+  const marks = MARKS.filter(mark => words.some(word => word.replace(';', '') === mark))
   return { marks, ranges, rest: prompt.slice(from, to).trim() }
 }
 

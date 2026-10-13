@@ -30,9 +30,10 @@ In scope:
   code block over skins' 9,000-character cap
 - The usage meters' placement: `AbovePrompt` and `PromptHint`, set by `/omp usage`
 - The reading keywords `tldr` and `speak`: their highlight in the prompt box,
-  their removal from the prompt, a reply's TLDR fold, and speech through the
+  their removal from the prompt, a reply's TLDR block, and speech through the
   system synthesizer
-- The speech voice, set by `/omp voice`
+- Speech on or off, set by `/omp speak`, and the speech voice, set by
+  `/omp voice`
 - The `terminal` surface
 
 Out of scope:
@@ -47,8 +48,8 @@ Out of scope:
 - A reading mode that persists across turns; each keyword acts on one reply
 - Checking the name `/omp voice` stores against the installed voices; a voice
   that is not installed fails at the first sentence it reads
-- Folding a reply that scrolled away before its keyword-only `tldr` arrived;
-  that summary draws as a row of its own instead
+- Drawing a TLDR block under a reply that scrolled away before its
+  keyword-only `tldr` arrived; that summary draws as a row of its own instead
 
 ## Location and files
 
@@ -90,14 +91,16 @@ installations use Claude Code's plugin cache.
 | `hooks/keywords.ts` | Pure functions: a prompt to its counting keywords, their letter ranges, and the text left for Claude |
 | `hooks/keywords.test.ts` | Matching, removal, keyword-only prompts, and highlight ranges |
 | `hooks/tldr.ts` | The summary request and its result, cut to the line limit |
-| `hooks/tldr-block.tsx` | The TLDR block: folded, open, pending, and failed. Named apart from `tldr.ts`, since one import path cannot name both |
+| `hooks/tldr-block.tsx` | The TLDR block under the reply, and the pending and failed lines. Named apart from `tldr.ts`, since one import path cannot name both |
 | `hooks/speech.ts` | Pure functions: reply markdown to sentences for speech |
 | `hooks/speech.test.ts` | Markdown stripping, sentence splits, and the utterance length cap |
-| `hooks/reading.test.ts` | The keywords through session events: marks, the fold, the previous reply, speech order, voice, and stopping, and failures |
+| `hooks/speak.ts` | `/omp speak` parsing and the stored setting |
+| `hooks/speak.test.ts` | Setting parsing, the command, persistence, and the reload after `/clear` |
+| `hooks/reading.test.ts` | The keywords through session events: marks, the TLDR block, the previous reply, speech on and off, speech order, voice, and stopping, and failures |
 | `hooks/usage.ts` | Meter figures and `/omp usage` parsing |
 | `hooks/usage-line.tsx` | The meter line drawn under the prompt |
 | `hooks/usage.test.ts` | Meter text, the command, placement persistence, and both slots |
-| `types/index.d.ts` | Per-call expansion, opening, and splitting; elapsed time; usage placement; density; meter; turn-record; reading state; and voice declarations |
+| `types/index.d.ts` | Per-call expansion, opening, and splitting; elapsed time; usage placement; density; meter; turn-record; reading state; speech setting; and voice declarations |
 
 The mod keeps expansion, compact opening, merged-group splitting, and Bash
 duration in `$.state` families keyed by the render request ID: a tool
@@ -156,11 +159,12 @@ whole payload through **Show all**, and through **Show ▸** first at
 `/omp density full|balanced|compact|blackbox` stores the level under the
 store key `density` and holds it in the `density` atom. `session.start` and
 `classic.SessionStart` with the sources `clear`, `resume`, and `fork` load
-it, as they load the usage placement and the voice. A stored value other
-than the four levels reads as `balanced`, the default. `/omp density`
-reports the level; a typed value other than the four levels shows the usage
-line and changes nothing. `/omp` with no setting's name shows one usage line
-for all three settings: `usage`, `density`, and `voice`.
+it, as they load the usage placement, the speech setting, and the voice. A
+stored value other than the four levels reads as `balanced`, the default.
+`/omp density` reports the level; a typed value other than the four levels
+shows the usage line and changes nothing. `/omp` with no setting's name shows
+one usage line for all four settings: `usage`, `density`, `speak`, and
+`voice`.
 
 | Level | Purpose |
 |---|---|
@@ -590,13 +594,18 @@ level read no skins setting.
 ## Reading keywords
 
 Two words in a prompt act on Claude's reply instead of reaching Claude:
-`tldr` folds a reply to a short summary, and `speak` reads a reply aloud. Each
-keyword acts on one reply; nothing carries into the next turn.
+`tldr` adds a short summary under a reply, and `speak` reads a reply aloud.
+Each keyword acts on one reply; nothing carries into the next turn. `speak`
+counts only while `/omp speak on` holds; see [Speech setting](#speech-setting).
 
 ### Matching
 
 - A keyword is `tldr`, `tl;dr`, or `speak`, in any letter case, as a whole
   word: no letter, digit, `-`, or `_` touches it on either side
+- While speech is off, `speak` is no keyword: it takes no highlight, stays
+  in the prompt Claude receives, and ends a run the way any other word does.
+  `fix it. speak tldr` counts `tldr` alone, and `fix it. tldr speak` counts
+  nothing
 - `speak` is an ordinary word, so a keyword counts only inside a run at the
   start or the end of the prompt. A run is one or more keywords separated by
   whitespace or `,`
@@ -679,13 +688,13 @@ text, an API error, or a timeout fails with that reason.
 
 The hook starts the call and returns without waiting for it. The `tldr`
 family, keyed by the reply's row, holds `pending`, `ready` with the text, or
-`failed` with the reason. A marked final reply draws:
+`failed` with the reason. A marked final reply always shows its usual
+drawing in full, with the summary beneath it:
 
 | State | Drawing |
 |---|---|
 | `pending` | The reply's usual drawing, then a muted `Summarizing…` line |
-| `ready`, folded (the default) | A rounded block in the card border colour: the label `TLDR`, the summary wrapped to the width, and **Show ▸**. The reply stays hidden |
-| `ready`, open | The block with **Collapse** in place of **Show ▸**, then the reply's usual drawing |
+| `ready` | The reply's usual drawing, then a rounded block in the card border colour: the label `TLDR` and the summary wrapped to the width. The block has no buttons |
 | `failed` | The reply's usual drawing, then a muted `TLDR failed: <reason>` line |
 
 The usual drawing is what this mod draws for the reply without a mark: its
@@ -725,6 +734,20 @@ A rejected `speak` call, such as one whose voice is not installed, stops the
 reading and shows a toast: `Speech failed: <cause>`. A reply with no text left
 after stripping plays nothing.
 
+### Speech setting
+
+Speech is off until the user turns it on. `/omp speak on` and `/omp speak
+off` store `on` or `off` under the store key `speak` and hold the setting in
+the `speak` atom. `/omp speak` reports `speech: on` or `speech: off`; any
+other value, or a word after it, shows `usage: /omp speak on|off` and changes
+nothing. `session.start` and `classic.SessionStart` with the sources
+`clear`, `resume`, and `fork` load it, as they load the usage placement, the
+density, and the voice. A stored value other than `on` reads as off.
+
+While speech is off, `prompt.edit` and `prompt.submit` count `tldr` alone, so
+`speak` neither glows nor leaves the prompt, and no reading starts. A turn
+marked `speak` while speech was on still reads its reply when it ends.
+
 ### Voice
 
 `/omp voice <name>` stores the voice under the store key `voice` and holds it
@@ -733,7 +756,7 @@ keeps its letter case and the spaces inside it, so `/omp voice Eddy (English
 (US))` stores `Eddy (English (US))`, and only the whitespace at its edges
 drops. `/omp voice` reports the voice. `session.start` and
 `classic.SessionStart` with the sources `clear`, `resume`, and `fork` load
-it, as they load the usage placement and the density. A stored value that is
+it, as they load the usage placement, the density, and the speech setting. A stored value that is
 blank or not a string reads as `Samantha`, the default.
 
 Every `$.audio.speak` call passes the voice. Without one, macOS `say` takes
@@ -750,8 +773,8 @@ selected it renders a few milliseconds of silence for each sentence.
 | `turnReply` | turn ID | The `uuid` of the turn's last text row |
 | `lastReply` | none | The `uuid` and text of the last main-loop text row |
 | `tldr` | reply row | `pending`, `ready`, or `failed` |
-| `tldrOpen` | reply row | Whether the block is open |
 | `speech` | none | The current reading's counter |
+| `speak` | none | Whether speech is on |
 | `voice` | none | The voice each `speak` call passes |
 
 `/clear`, `/resume`, and `/branch` reset `$.state`. After them, a
@@ -824,14 +847,20 @@ code, and bare URLs; sentence splits; and the 4,096-character cap.
 `hooks/reading.test.ts` drives session events with a stubbed `$.model` and
 `$.audio`. It covers the highlight's decorations beside existing ones, the
 prompt rewrite and its marks, a prompt submitted mid-turn, keyword-only
-drops and their reasons, no previous reply, each TLDR state and the
-**Show ▸** and **Collapse** transitions, the summary request's fields and
+drops and their reasons, no previous reply, each TLDR state with the reply
+drawn above the block, the summary request's fields and
 the six-line cut, a summary that fails or times out, an aborted turn, the
 previous reply's `$.ui.log` row, speech order, a prompt that stops a reading
 after its sentence, `tldr speak` with a ready and a failed summary, a
-rejected `speak` call, the voice each `speak` call passes by default, after
+rejected `speak` call, `speak` with speech off in the prompt box, the prompt,
+and beside `tldr`, `/omp speak off` and `on` between turns, the voice each
+`speak` call passes by default, after
 `/omp voice`, and after `/clear`, a voice that is not installed, subagent
 turns, prompts from other origins, and the desktop surface.
+
+`hooks/speak.test.ts` covers setting parsing, the command's replies, store
+persistence, the default of off, the fallback for any stored value other than
+`on`, and the reload at session start and after `/clear`.
 
 `hooks/voice.test.ts` covers voice parsing, the command's replies, store
 persistence, the fallback for a blank or non-string stored value, and the
@@ -893,10 +922,11 @@ after **Show all** and hides it again after **Collapse**.
 The reading smoke check runs in the same session:
 
 1. `fix nothing, reply with three paragraphs. tldr` lights `tldr` as it is
-   typed, and the reply folds to a TLDR block that **Show ▸** opens
+   typed, and the reply draws in full with a TLDR block beneath it
 2. A keyword-only `tldr` writes a `TLDR · previous reply` row and starts no
    turn
-3. `speak` reads the previous reply aloud, and a following prompt stops it
-   after the sentence in progress
+3. With speech off, the default, `speak` stays unlit and reaches Claude.
+   After `/omp speak on`, `speak` reads the previous reply aloud, and a
+   following prompt stops it after the sentence in progress
 4. A reply that prints a 10,000-character file draws it coloured, as
    consecutive cards, and draws it whole with `/skin fold off`
