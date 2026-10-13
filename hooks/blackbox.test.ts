@@ -439,6 +439,34 @@ test('a group whose calls span two blocks draws both, in turn order', async ($, 
   await ui.unmount()
 })
 
+test('a group of calls no card formats draws its block, so an MCP call folds with the calls after it', async ($, on) => {
+  const outcomes = await blackbox($, on)
+  await $.turn.start({ text: 'go', turnId: 'mcp' })
+  await response($, 'row-m1', [
+    { type: 'tool_use', id: 'm1', name: 'mcp__docs__index', input: { query: 'greengrass deploy' } },
+    { type: 'tool_use', id: 'm2', name: 'Artifact', input: { action: 'list' } },
+  ])
+  for (const [id, name, input, text] of [['m1', 'mcp__docs__index', { query: 'greengrass deploy' }, 'hits'], ['m2', 'Artifact', { action: 'list' }, 'none']] as const) {
+    outcomes.set(id, { result: text, text })
+    await $.tool.call({ tool: name, tool_use_id: id, ...input } as never)
+    await answer($, id, text)
+  }
+  await call($, outcomes, 'm3', 'Bash', { command: 'python3 toy.py' }, { result: { stdout: 'a', stderr: '', interrupted: false }, text: 'a' })
+  await say($, 'mcp-end', 'Done.')
+  await $.turn.complete({ answer: 'Done.', durationMs: 3000, isAborted: false, turnId: 'mcp', reason: 'answer' })
+  const group = await mountGroup($, 'collapsed-row-m1', [
+    tool('m1', 'mcp__docs__index', { query: 'greengrass deploy' }, 'hits'),
+    tool('m2', 'Artifact', { action: 'list' }, 'none'),
+  ])
+  expect((await group.find({ key: 'turn-fold' }))?.text).toBe('▸ Running python3 toy.py')
+  expect(await group.find({ type: 'Text', text: exactly('3 calls · 3.0s') })).toBeDefined()
+  expect(await group.find({ text: 'native rendering' })).toBeUndefined()
+  await group.unmount()
+  const later = await mountUse($, tool('m3', 'Bash', { command: 'python3 toy.py' }, { stdout: 'a', stderr: '', interrupted: false }))
+  expect(await later.drawn()).toEqual(NOTHING)
+  await later.unmount()
+})
+
 test('text after the last call draws', async ($, on) => {
   const outcomes = await blackbox($, on)
   await editingTurn($, outcomes)

@@ -527,9 +527,11 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
-    if (e.surface !== 'terminal' || !e.props.calls.some(call => CARD_TOOLS[call.tool] === true)) return next(e)
+    if (e.surface !== 'terminal') return next(e)
     const forced = { ...e, props: { ...e.props, isExpanded: true } }
     const level = await read($, densityAtom)
+    // A recorded turn's group draws its blocks whatever its tools: one of only MCP or Agent
+    // calls can hold a block's first call.
     if (level === 'blackbox') {
       const ids = e.props.calls.map(call => call.tool_use_id ?? '')
       if (!ids.includes('')) {
@@ -563,6 +565,7 @@ export const register: Register = on => {
         }
       }
     }
+    if (!e.props.calls.some(call => CARD_TOOLS[call.tool] === true)) return next(e)
     // Calls of a turn the level did not record draw as compact draws them.
     const density = level === 'blackbox' ? 'compact' : level
     if (density === 'full') return next(forced)

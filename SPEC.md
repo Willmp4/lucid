@@ -146,7 +146,9 @@ Bash, Read, Grep, or Glob:
   describes; otherwise pass `isExpanded: true` to `next`
 
 At `blackbox`, the rows of a recorded turn follow the turn block rules in
-the Turn blocks section, ahead of the rules above.
+the Turn blocks section, ahead of the rules above. Those rules cover every
+terminal group, whatever tools it holds: a group of only MCP or Agent calls
+can hold a block's first call, and draws that block.
 
 An expanded group draws each result inside its `ToolUse` row, and a merged
 card replaces those rows. A separate `ToolResult` belongs to a standalone
