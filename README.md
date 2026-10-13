@@ -18,6 +18,8 @@ card or to split a merged run into its own cards, and **Collapse** to restore
 it. Failed calls always open in full. `/omp density` sets how much each card
 shows, or folds each run of calls into a block that Claude's text ends.
 
+![A turn at the balanced density: two shell command cards with their output and duration, a Read card with its line summary, and an Edit card with its diff, then Claude's reply](docs/balanced.svg)
+
 Peach bold tool labels, cyan paths, and softer ordinary output share one
 palette across all six tools. Shell commands distinguish commands, flags,
 and quoted strings. Inline timestamps and durations stay muted; standalone
@@ -28,10 +30,17 @@ Markdown tables in Claude's replies draw as box-drawn grids. When a table is
 wider than the pane, its widest columns narrow and long cells wrap onto extra
 lines, so no cell loses text. The rest of the reply keeps the skins drawing.
 
+![A reply table with four columns drawn as a box-drawn grid in a 100-column pane, its long cells wrapped onto extra lines](docs/reply-table.svg)
+
 A code block in a reply that is longer than skins' 9,000-character limit,
 such as a long file Claude prints, draws in the skins colours too. The block
 splits at line boundaries into consecutive cards, each under the limit, and
 each card shows every line it holds.
+
+When Claude prints a 10,000-character file, the first card ends at the top of
+this picture, and the second card holds the file's last lines.
+
+![The end of a long code block in a reply: the bottom edge of the first card, then a second card of syntax-coloured TypeScript lines](docs/long-code.svg)
 
 Two keywords in a prompt act on Claude's reply: `tldr` folds it to a short
 summary, and `speak` reads it aloud. See [Reading keywords](#reading-keywords).
@@ -54,6 +63,10 @@ sessions.
 | `/omp voice <name>` | Speech uses the system voice of that exact name, such as `Daniel` or `Eddy (English (US))`. The default is `Samantha` |
 | `/omp voice` | Shows the current voice |
 
+With `/omp usage below`, the meters sit on a line under the prompt:
+
+![The context and plan-limit meters on a line under the prompt, with nothing above the prompt](docs/usage-below.svg)
+
 The density level sets each card's body:
 
 | Card | `full` | `balanced` | `compact` |
@@ -63,6 +76,14 @@ The density level sets each card's body:
 | Bash | The first 16 stdout rows; the duration on the summary line | The last 4 stdout rows; `✓` or `✗` and the duration on the header row | One header line with `✓` or `✗` and the duration; **Show ▸** opens the `balanced` body |
 | Edit and Write | Up to 40 diff rows or 20 new-file rows | Up to 12 rows | One header line with the counts; **Show ▸** opens the 12 rows |
 | A failed call | Every row and a red border | Every row and a red border | Every row and a red border |
+
+At `compact`, each card is one header line that opens on **Show ▸**:
+
+![The same turn at the compact density: four one-line cards, each with a Show button, and the shell commands with their status and duration](docs/compact.svg)
+
+At `full`, each card shows its full preview:
+
+![The same turn at the full density: a shell command card with three matching lines, a Read card with numbered file lines, and an Edit card with its diff](docs/full.svg)
 
 At `blackbox`, one bordered block holds each run of tool calls that Claude
 makes without writing text between them. Only the calls and their results
@@ -88,6 +109,8 @@ final reply comes last. Each block is folded by default:
 ```
 
 Each folded line takes one terminal row at any pane width, cut with `…`.
+
+![A turn at the blackbox density: a folded Reading block, a line of Claude's text, and a folded Editing block with a red border that lists its failed call and error line](docs/blackbox-folded.svg)
 
 - **Title:** `Editing` and the file the block edits or writes most, with
   `+N file` or `+N files` for the rest. Otherwise the title reads a shell
@@ -121,6 +144,10 @@ Each folded line takes one terminal row at any pane width, cut with `…`.
   `Bash: <command> · moved to background after 120s`, or
   `Bash: <command> · running in background`
 
+Click the Editing block's title to open it:
+
+![The Editing block opened: its four calls listed in order as compact cards, the failed call in full with a red border](docs/blackbox-open.svg)
+
 ## Reading keywords
 
 Two keywords in a prompt act on Claude's reply instead of reaching Claude:
@@ -129,6 +156,8 @@ Two keywords in a prompt act on Claude's reply instead of reaching Claude:
 |---|---|
 | `tldr` or `tl;dr` | Folds the reply to a summary of one to three lines that Claude Haiku writes. **Show ▸** opens the reply under the summary, and **Collapse** folds it again |
 | `speak` | Reads the reply aloud with the system synthesizer, one sentence at a time, in the voice `/omp voice` sets |
+
+![A three-paragraph reply folded by tldr to a TLDR block with a short summary and a Show button](docs/tldr.svg)
 
 A keyword counts in any letter case, as a whole word, and only at the start
 or the end of the prompt, so `speak` inside a sentence stays an ordinary word.
@@ -309,6 +338,10 @@ pagination, lossless semantic spans, token boundaries, and colour precedence.
 They also cover long code blocks, the reading keywords, the TLDR block, and
 speech, with the model and the synthesizer stubbed. [SPEC.md](SPEC.md) describes the
 renderer and live smoke checks.
+
+The pictures in this README are SVG drawings of terminal screens saved in
+`docs/screens/`. To redraw them after you change the converter, run
+`bun scripts/screenshot-svg.ts --all`.
 
 ## License
 

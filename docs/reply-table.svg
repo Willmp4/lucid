@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="879.2" height="562.8" viewBox="0 0 628 402" role="img" aria-label="a reply table wider than the pane">
+<title>a reply table wider than the pane</title>
+<rect x=".5" y=".5" width="627" height="401" rx="8" fill="#1e1e2e"/>
+<g transform="translate(12 6.5) scale(0.5)" fill="none" stroke="#9399b2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7l5 5-5 5"/><path d="M12 18h7"/></g>
+<text x="27" y="15" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="8.5" fill="#9399b2" letter-spacing=".3">a reply table wider than the pane</text>
+<line x1="0" y1="23.5" x2="628" y2="23.5" stroke="#ffffff" stroke-opacity=".1"/>
+<g fill="none" stroke-linecap="square"><path d="M20 50H608M20 86H608M17 53V83M611 53V83M17 53A3 3 0 0 1 20 50M611 53A3 3 0 0 0 608 50M17 83A3 3 0 0 0 20 86M611 83A3 3 0 0 1 608 86" stroke="#7f849c" stroke-width="1"/><path d="M20 122H596M17 146H599M17 206H599M20 278H596M17 125V275M185 122V278M251 122V278M425 122V278M599 125V275M17 125A3 3 0 0 1 20 122M599 125A3 3 0 0 0 596 122M17 275A3 3 0 0 0 20 278M599 275A3 3 0 0 1 596 278" stroke="#45475a" stroke-width="1"/><path d="M14 338H614M14 362H614" stroke="#888888" stroke-width="1"/></g>
+<g font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#cdd6f4">
+<text x="26 32 38 44 50 56 62 68 74 80 86 92 98 104 110 116 122 128 134 140 146 152 158 164 170 176 182 188 194 200 206 212 218 224 230 236 242 248 254 260 266 272 278 284 290 296 302 308 314 320 326 332 338 344 350 356 362 368 374 380 386 392 398 404 410 416 422 428 434 440 446 452 458 464 470 476 482 488 494 500 506 512 518 524 530 536 542 548 554 560 566 572 578 584 590" y="65.4" xml:space="preserve">Without tools, reply with only a markdown table of two shop items with the columns Item, Stock,</text>
+<text x="26 32 38 44 50 56 62 68 74 80 86 92 98 104 110 116 122 128 134 140 146 152 158 164 170 176 182 188 194 200 206 212 218 224 230 236 242 248 254 260 266 272 278 284 290 296 302 308 314 320 326 332 338 344 350 356 362 368 374 380 386 392 398 404 410 416 422 428 434 440 446 452 458 464 470 476 482 488 494 500 506 512 518 524 530 536 542" y="77.4" xml:space="preserve">What it is, and Reorder advice; write each long cell as one sentence of 14 to 18 words.</text>
+<text x="26 32 38 44" y="137.4" xml:space="preserve"><tspan font-weight="700">Item</tspan></text>
+<text x="194 200 206 212 218" y="137.4" xml:space="preserve"><tspan font-weight="700">Stock</tspan></text>
+<text x="260 266 272 278 284 290 296 302 308 314" y="137.4" xml:space="preserve"><tspan font-weight="700">What it is</tspan></text>
+<text x="434 440 446 452 458 464 470 476 482 488 494 500 506 512" y="137.4" xml:space="preserve"><tspan font-weight="700">Reorder advice</tspan></text>
+<text x="26 32 38 44 50 56 62 68 74 80 86 92 98 104 110 116 122 128 134 140 146 152 158 164 170" y="161.4" xml:space="preserve">Ceramic pour-over dripper</text>
+<text x="194 200 206 212 218 224 230 236" y="161.4" xml:space="preserve">12 units</text>
+<text x="260 266 272 278 284 290 296 302 308 314 320 326 332 338 344 350 356 362 368 374 380 386 392 398 404 410" y="161.4" xml:space="preserve">A hand-glazed ceramic cone</text>
+<text x="434 440 446 452 458 464 470 476 482 488 494 500 506 512 518 524 530 536 542 548 554 560 566 572" y="161.4" xml:space="preserve">Reorder when stock falls</text>
+<text x="260 266 272 278 284 290 296 302 308 314 320 326 332 338 344 350 356 362 368 374 380 386 392 398 404" y="173.4" xml:space="preserve">that holds a paper filter</text>
+<text x="434 440 446 452 458 464 470 476 482 488 494 500 506 512 518 524 530 536 542 548 554 560 566 572 578 584" y="173.4" xml:space="preserve">below 8 units, because the</text>
+<text x="260 266 272 278 284 290 296 302 308 314 320 326 332 338 344 350 356 362 368 374 380 386 392 398 404" y="185.4" xml:space="preserve">and brews one or two cups</text>
+<text x="434 440 446 452 458 464 470 476 482 488 494 500 506 512 518 524 530 536 542 548 554 560" y="185.4" xml:space="preserve">supplier takes about 3</text>
+<text x="260 266 272 278 284 290 296 302 308 314" y="197.4" xml:space="preserve">of coffee.</text>
+<text x="434 440 446 452 458 464 470 476 482 488 494 500 506 512 518 524 530" y="197.4" xml:space="preserve">weeks to deliver.</text>
+<text x="26 32 38 44 50 56 62 68 74 80 86 92 98 104 110" y="221.4" xml:space="preserve">Linen tea towel</text>
+<text x="194 200 206 212 218 224 230" y="221.4" xml:space="preserve">3 units</text>
+<text x="260 266 272 278 284 290 296 302 308 314 320 326 332 338 344 350 356 362 368 374 380" y="221.4" xml:space="preserve">A woven linen kitchen</text>
+<text x="434 440 446 452 458 464 470 476 482 488 494 500 506 512 518 524 530 536 542 548 554 560" y="221.4" xml:space="preserve">Reorder today, because</text>
+<text x="260 266 272 278 284 290 296 302 308 314 320 326 332 338 344 350 356 362 368 374 380 386 392 398 404 410" y="233.4" xml:space="preserve">towel that dries glassware</text>
+<text x="434 440 446 452 458 464 470 476 482 488 494 500 506 512 518 524 530 536 542 548" y="233.4" xml:space="preserve">stock sits below the</text>
+<text x="260 266 272 278 284 290 296 302 308 314 320 326 332 338 344 350 356 362 368 374 380 386 392 398" y="245.4" xml:space="preserve">without leaving lint and</text>
+<text x="434 440 446 452 458 464 470 476 482 488 494 500 506 512 518 524 530 536 542 548 554 560" y="245.4" xml:space="preserve">10-unit threshold that</text>
+<text x="260 266 272 278 284 290 296 302 308 314 320 326 332 338 344 350 356 362 368 374 380 386 392" y="257.4" xml:space="preserve">softens with each wash.</text>
+<text x="434 440 446 452 458 464 470 476 482 488 494 500 506 512 518 524 530 536 542 548 554 560 566 572" y="257.4" xml:space="preserve">covers a typical weekend</text>
+<text x="434 440 446 452 458 464 470 476 482" y="269.4" xml:space="preserve">of sales.</text>
+<text x="14 20 26 32 38 44 50 56 62 68 74 80 86 92 98" y="305.4" xml:space="preserve"><tspan fill="#cba6f7">◆ </tspan><tspan fill="#7f849c">Purred in 11s</tspan></text>
+<text x="14 20 26 32 38 44 50 56 62 68 74 80 86 92 98 104 110 116 122" y="317.4" xml:space="preserve"><tspan fill="#cba6f7">▱▱▱▱▱▱▱▱</tspan><tspan fill="#7f849c"> 5% context</tspan></text>
+<text x="146 152 158 164 170 176 182 188 194 200 206 212 218 224" y="317.4" xml:space="preserve"><tspan fill="#cba6f7">▱▱▱▱▱▱▱▱</tspan><tspan fill="#7f849c"> 2% 5h</tspan></text>
+<text x="248 254 260 266 272 278 284 290 296 302 308 314 320 326 332" y="317.4" xml:space="preserve"><tspan fill="#cba6f7">▰▱▱▱▱▱▱▱</tspan><tspan fill="#7f849c"> 16% 7d</tspan></text>
+<text x="494 500 506 512 518 524 530 536 542 548" y="317.4" xml:space="preserve"><tspan fill="#b1b9f9">0</tspan><tspan fill="#999999">: Compact</tspan></text>
+<text x="590 596 602" y="317.4" xml:space="preserve"><tspan fill="#999999">[-]</tspan></text>
+<text x="14 20" y="353.4" xml:space="preserve">❯ </text>
+<text x="26 32 38 44 50 56 62 68 74 80 86" y="377.4" xml:space="preserve"><tspan fill="#999999">doc voice ✓</tspan></text>
+<text x="26 32 38 44 50 56 62 68 74 80 86 92 98 104 110 116 122 128 134 140 146 152 158 164 170 176 182 188 194 200 206 212 218 224 230 236 242 248 254 260 266 272 278 284 290 296 302 308 314 320 326 332 338 344 350 356 362 368 374 380 386 392 398 404 410 416 422 428 434 440 446" y="389.4" xml:space="preserve"><tspan fill="#999999">-- INSERT -- </tspan><tspan fill="#ff6b80">⏵⏵ bypass permissions on</tspan><tspan fill="#999999"> (shift+tab to cycle) · ← 7 agents</tspan></text>
+</g>
+<rect x=".5" y=".5" width="627" height="401" rx="8" fill="none" stroke="#ffffff" stroke-opacity=".16"/>
+</svg>
