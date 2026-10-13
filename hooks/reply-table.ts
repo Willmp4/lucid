@@ -225,8 +225,8 @@ function padded(runs: readonly Run[], width: number, align: Align): Run[] {
 
 const merged = (runs: readonly Run[]): Run[] => runsOf(runs.flatMap(run => [...run.text].map(char => ({ char, style: run.style }))))
 
-// The table as box-drawn lines `columns` cells wide at most. Rows that wrap get a rule
-// between them so each row stays readable.
+// The table as box-drawn lines `columns` cells wide at most, with a rule between body rows
+// so the frame holds at every width.
 export function tableLines(table: Table, columns: number): Run[][] {
   const cellsOfRow = (row: readonly string[], base: Style) => table.header.map((_, col) => inlineRuns(row[col] ?? '', base))
   const header = cellsOfRow(table.header, 'header')
@@ -252,13 +252,11 @@ export function tableLines(table: Table, columns: number): Run[][] {
       ]),
     ]))
   }
-  const bodyLines = body.map(rowLines)
-  const separated = bodyLines.some(lines => lines.length > 1)
   return [
     rule('╭', '┬', '╮'),
     ...rowLines(header),
     rule('├', '┼', '┤'),
-    ...bodyLines.flatMap((lines, i) => (separated && i > 0 ? [rule('├', '┼', '┤'), ...lines] : lines)),
+    ...body.flatMap((row, i) => (i > 0 ? [rule('├', '┼', '┤'), ...rowLines(row)] : rowLines(row))),
     rule('╰', '┴', '╯'),
   ]
 }

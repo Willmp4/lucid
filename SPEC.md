@@ -546,7 +546,7 @@ fence over the cap in the Long code blocks section returns `next(e)`.
   its column breaks across lines. Column alignment from the delimiter row
   applies to every line of a cell
 - **Frame:** `╭┬╮`, `├┼┤`, and `╰┴╯` rules in `#45475a`, bold header text, and a
-  rule between body rows once any body row wraps. Each line is one `Text`
+  rule between body rows at every width. Each line is one `Text`
   with `truncate-end` as a guard. Past 1,500 styled spans a table draws one
   plain span per line
 - **Other text:** each text segment draws through `$.skins.markdown`, so code

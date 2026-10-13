@@ -77,10 +77,18 @@ test('tableLines draws inline code without backticks and bold without markers', 
   expect(spans.find(span => span.text === 'c')?.style).toBe('bold')
 })
 
-test('tableLines separates body rows with a rule once a row wraps', () => {
+test('tableLines separates body rows with a rule whether or not a row wraps', () => {
   const table: Table = { kind: 'table', header: ['A', 'B'], align: ['left', 'left'], rows: [['one', LONG], ['two', 'short']] }
-  const lines = plain(tableLines(table, 40))
-  expect(lines.filter(line => line.startsWith('├')).length).toBe(2)
+  expect(plain(tableLines(table, 40)).filter(line => line.startsWith('├')).length).toBe(2)
+  expect(plain(tableLines({ ...table, rows: [['one', 'x'], ['two', 'y']] }, 80))).toEqual([
+    '╭─────┬───╮',
+    '│ A   │ B │',
+    '├─────┼───┤',
+    '│ one │ x │',
+    '├─────┼───┤',
+    '│ two │ y │',
+    '╰─────┴───╯',
+  ])
 })
 
 const STOCK: RenderElement = { type: 'Text', props: {}, children: ['native rendering'] }
