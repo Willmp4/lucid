@@ -32,13 +32,13 @@ export function openBlock(turn: TurnRecord): TurnBlock | undefined {
   return last === undefined || last.closed ? undefined : last
 }
 
-// A turn with a response row's items added at `now`: text closes the open block, and a call
-// joins it or opens the next one.
+// A turn with a response row's items added at `now`: text or a question closes the open block,
+// and a call joins it or opens the next one.
 export function addItems(turn: TurnRecord, items: readonly TurnItem[], now: number): TurnRecord {
   let blocks = turn.blocks
   for (const item of items) {
     const open = openBlock({ blocks })
-    if (item.kind === 'text') {
+    if (item.kind !== 'call') {
       if (open !== undefined) blocks = [...blocks.slice(0, -1), { ...open, closed: true }]
     } else if (!blocks.some(block => block.ids.includes(item.id))) {
       blocks = open === undefined
@@ -79,14 +79,24 @@ export function recordInput(input: unknown): Record<string, unknown> {
   return kept
 }
 
-// A response row's text and calls, in the order the model wrote them. Thinking, and text that
-// is only whitespace, add nothing.
+// A question to the user keeps its own rows, so the questions answered stay in view.
+export const isQuestion = (tool: string) => tool === 'AskUserQuestion'
+
+// A Read that returned an image, which no card draws.
+export const isImageRead = (tool: string, output: unknown) => tool === 'Read' && recordOf(output).type === 'image'
+
+// A response row's text, questions, and calls, in the order the model wrote them. Thinking, and
+// text that is only whitespace, add nothing. A question is no call of the turn.
 export function responseItems(content: readonly { type: string; [field: string]: unknown }[]) {
   const items: TurnItem[] = []
   const calls: RecordedCall[] = []
   for (const block of content) {
     if (block.type === 'text' && textOf(block.text).trim() !== '') items.push({ kind: 'text' })
     if (block.type !== 'tool_use' || typeof block.id !== 'string') continue
+    if (isQuestion(textOf(block.name))) {
+      items.push({ kind: 'question' })
+      continue
+    }
     items.push({ kind: 'call', id: block.id })
     calls.push({
       id: block.id,
@@ -139,6 +149,9 @@ export function backgroundLabel(call: Pick<CallRecord, 'tool' | 'input' | 'backg
   const after = call.background?.timedOutAfterMs
   return `${callLabel(call, cwd)} · ${after === undefined ? 'running in background' : `moved to background after ${Math.round(after / 1000)}s`}`
 }
+
+// `Read: shot.png · image`.
+export const imageLabel = (call: Pick<CallRecord, 'tool' | 'input'>, cwd: string) => `${callLabel(call, cwd)} · image`
 
 // Parts of one line, cut by terminal cells to `width` and ended with `…` where cut.
 export function fitParts(parts: readonly string[], width: number): string[] {

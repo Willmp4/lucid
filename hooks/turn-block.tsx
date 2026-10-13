@@ -3,7 +3,7 @@ import type { CallRecord } from '../types'
 import { linesOfText } from './card-model'
 import type { CardContent } from './card-model'
 import { COLORS } from './text-style'
-import { backgroundLabel, callLabel, fitLine, fitParts, isBrokenCall, statusLine, titleOf } from './turn-model'
+import { callLabel, fitLine, fitParts, isBrokenCall, statusLine, titleOf } from './turn-model'
 
 // A run of a turn's calls at the blackbox level: one bordered block, folded to its title and
 // status lines, failures always listed; open, a compact card per call.
@@ -77,8 +77,9 @@ export function genericCard(record: CallRecord, text: string | undefined, cwd: s
   }
 }
 
-// A call the engine moved to the background, in an open block: one muted row, no card.
-export function backgroundRow(ui: ElementTable<'terminal'>, record: CallRecord, cwd: string, columns: number) {
+// A call no card draws in an open block, such as a background job or an image read: one muted
+// row cut to fit.
+export function mutedRow(ui: ElementTable<'terminal'>, label: string, columns: number) {
   const { Text } = ui
-  return <Text color={COLORS.muted} wrap="truncate-end">{fitLine(backgroundLabel(record, cwd), Math.max(1, columns - FRAME))}</Text>
+  return <Text color={COLORS.muted} wrap="truncate-end">{fitLine(label, Math.max(1, columns - FRAME))}</Text>
 }

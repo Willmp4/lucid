@@ -3,10 +3,11 @@ export type UsageMeter = { label: string; percent: number; bar: string }
 export type Density = 'full' | 'balanced' | 'compact' | 'blackbox'
 
 // What a response row adds to a turn, in the order the model wrote it: a call by its
-// tool_use_id, or text, which ends the block before it.
-export type TurnItem = { kind: 'call'; id: string } | { kind: 'text' }
-// A run of a turn's calls with no text between them, drawn as one block. Its time runs from the
-// row of its first call to its last result; text after it, or the turn's end, closes it.
+// tool_use_id, or text or a question to the user, either of which ends the block before it.
+export type TurnItem = { kind: 'call'; id: string } | { kind: 'text' } | { kind: 'question' }
+// A run of a turn's calls with no text or question between them, drawn as one block. Its time
+// runs from the row of its first call to its last result; text or a question after it, or the
+// turn's end, closes it.
 export type TurnBlock = { ids: string[]; startedAt: number; endedAt?: number; closed: boolean }
 export type TurnRecord = { blocks: TurnBlock[] }
 export type CallStatus = 'running' | 'ok' | 'failed' | 'interrupted'

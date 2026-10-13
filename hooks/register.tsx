@@ -15,10 +15,10 @@ import { summaryOf, summaryRequest } from './tldr'
 import type { Settled } from './tldr'
 import { drawTldr, drawTldrNote } from './tldr-block'
 import { CARD_TOOLS, cardOf, drawCard } from './tool-card'
-import { backgroundRow, drawTurn, genericCard } from './turn-block'
+import { drawTurn, genericCard, mutedRow } from './turn-block'
 import {
-  addItems, anchorOf, answerCalls, backgroundOf, callLabel, elapsedOf, endTurn, failureLine, isBackgroundCall, isBrokenCall, openBlock, recordInput,
-  responseItems, resultsOf,
+  addItems, anchorOf, answerCalls, backgroundLabel, backgroundOf, callLabel, elapsedOf, endTurn, failureLine, imageLabel, isBackgroundCall,
+  isBrokenCall, isImageRead, isQuestion, openBlock, recordInput, responseItems, resultsOf,
 } from './turn-model'
 import { metersOf, placementOf, usageCommand } from './usage'
 import { drawMeters } from './usage-line'
@@ -132,10 +132,11 @@ async function recordRow($: EngineInterface, turnId: string, door: string, conte
 const isPending = (props: CallProps) => props.output === undefined && !props.isErrored && !props.isInterrupted
 
 // Whether the block can show a call's result in place of its own row: a card formats it, it
-// is a background job, or it is text.
+// is a background job or an image read, or it is text.
 async function canShow($: EngineInterface, id: string, props: CallProps, cwd: string): Promise<boolean> {
   if (EDIT_TOOLS.has(props.tool)) return true
   if (props.tool === 'Bash' && backgroundOf(props.output) !== undefined) return true
+  if (isImageRead(props.tool, props.output)) return true
   if (CARD_TOOLS[props.tool] === true) return cardOf(props, cwd) !== null
   if (isPending(props)) return true
   const body = await read($, memberOf(bodyAtom, member(id)))
@@ -152,12 +153,14 @@ const propsOf = (record: CallRecord, body: CallBody): CallProps => ({
 })
 
 // One call of an open block: its compact card, keyed apart from the others; a background job
-// draws one muted row.
+// or an image read draws one muted row.
 async function drawCall($: EngineInterface, e: RenderInput<'ToolUse' | 'ToolGroup', 'terminal'>, id: string, cwd: string) {
   const ui = $.ui.resolve(e)
+  const columns = e.viewport?.columns ?? 100
   const record = await read($, memberOf(callAtom, member(id)))
-  if (isBackgroundCall(record) && !isBrokenCall(record)) return backgroundRow(ui, record, cwd, e.viewport?.columns ?? 100)
+  if (isBackgroundCall(record) && !isBrokenCall(record)) return mutedRow(ui, backgroundLabel(record, cwd), columns)
   const body = await read($, memberOf(bodyAtom, member(id)))
+  if (isImageRead(record.tool, body.output)) return mutedRow(ui, imageLabel(record, cwd), columns)
   const props = propsOf(record, body)
   const opening = memberOf(openedAtom, member(id))
   const view = { density: 'compact' as const, opened: await read($, opening), keySuffix: `-${id}`, toggleOpen: () => {
@@ -533,6 +536,8 @@ export const register: Register = on => {
     // A recorded turn's group draws its blocks whatever its tools: one of only MCP or Agent
     // calls can hold a block's first call.
     if (level === 'blackbox') {
+      // A question keeps its own row: the group draws forced open, and each row decides.
+      if (e.props.calls.some(call => isQuestion(call.tool))) return next(forced)
       const ids = e.props.calls.map(call => call.tool_use_id ?? '')
       if (!ids.includes('')) {
         const owners = await Promise.all(ids.map(id => read($, memberOf(ownerAtom, member(id)))))
@@ -596,7 +601,8 @@ export const register: Register = on => {
   on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
     if (e.surface !== 'terminal') return next(e)
     const level = await read($, densityAtom)
-    if (level === 'blackbox') {
+    // A question keeps its own row, asked or answered, and joins no block.
+    if (level === 'blackbox' && !isQuestion(e.props.tool)) {
       const id = e.props.tool_use_id
       const pending = isPending(e.props)
       const owner = await read($, memberOf(ownerAtom, member(id)))

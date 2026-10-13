@@ -24,7 +24,7 @@ Set the level with `/omp density <level>`. The default is `balanced`.
 ![The same turn at the full density: a shell command card with three matching lines, a Read card with numbered file lines, and an Edit card with its diff](docs/full.svg)
 
 **`blackbox`:** each run of calls folds into one block. Click a block to open
-it.
+it. Claude's questions to you stay outside the blocks, with your answers.
 
 ![A turn at the blackbox density: a folded Reading block, a line of Claude's text, and a folded Editing block with a red border that lists its failed call and error line](docs/blackbox-folded.svg)
 

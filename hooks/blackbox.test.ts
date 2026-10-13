@@ -236,6 +236,20 @@ test('a response row yields its text and calls in order, with long inputs cut fo
   expect(responseItems([{ type: 'thinking', thinking: 'hmm' }, { type: 'text', text: ' \n' }])).toEqual({ items: [], calls: [] })
 })
 
+test('a question in a response row ends the block before it and joins no block', () => {
+  const { items, calls } = responseItems([
+    { type: 'tool_use', id: 'c1', name: 'Bash', input: { command: 'ls' } },
+    { type: 'tool_use', id: 'q1', name: 'AskUserQuestion', input: { questions: [] } },
+    { type: 'tool_use', id: 'c2', name: 'Bash', input: { command: 'pwd' } },
+  ])
+  expect(items).toEqual([{ kind: 'call', id: 'c1' }, { kind: 'question' }, { kind: 'call', id: 'c2' }])
+  expect(calls.map(found => found.id)).toEqual(['c1', 'c2'])
+  expect(addItems(EMPTY, items, 100).blocks).toEqual([
+    { ids: ['c1'], startedAt: 100, closed: true },
+    { ids: ['c2'], startedAt: 100, closed: false },
+  ])
+})
+
 test('a result row yields each result, its error state, and its text', () => {
   expect(resultsOf([
     { type: 'tool_result', tool_use_id: 'c1', content: 'fine' },
@@ -650,16 +664,99 @@ test('an Agent call counts as a call and its result opens in the expanded block'
 
 test('a result the block cannot show keeps its own row', async ($, on) => {
   const outcomes = await blackbox($, on)
-  const image = { type: 'image', file: { base64: 'AAAA', type: 'image/png', originalSize: 4 } }
-  await $.turn.start({ text: 'go', turnId: 'image' })
+  await $.turn.start({ text: 'go', turnId: 'blank' })
   await call($, outcomes, 'g1', 'Bash', { command: 'ls' }, { result: { stdout: 'a.png', stderr: '', interrupted: false }, text: 'a.png' })
-  await call($, outcomes, 'g2', 'Read', { file_path: '/work/a.png' }, { result: image, text: '[image]' })
-  const row = await mountUse($, tool('g2', 'Read', { file_path: '/work/a.png' }, image))
+  await call($, outcomes, 'g2', 'mcp__docs__index', { query: 'none' }, { result: '', text: '' })
+  const row = await mountUse($, tool('g2', 'mcp__docs__index', { query: 'none' }, ''))
   expect(await row.find({ type: 'Text', text: 'native rendering' })).toBeDefined()
   await row.unmount()
-  const result = await mountResult($, 'g2', 'Read', image)
+  const result = await mountResult($, 'g2', 'mcp__docs__index', '')
   expect(await result.find({ type: 'Text', text: 'native rendering' })).toBeDefined()
   await result.unmount()
+})
+
+const IMAGE = { type: 'image', file: { base64: 'AAAA', type: 'image/png', originalSize: 4 } }
+
+test('an image read folds into its block, and the open block shows it as one muted line', async ($, on) => {
+  const outcomes = await blackbox($, on)
+  await $.turn.start({ text: 'go', turnId: 'image' })
+  await call($, outcomes, 'g1', 'Bash', { command: 'python3 toy.py' }, { result: { stdout: 'a.png', stderr: '', interrupted: false }, text: 'a.png' })
+  await call($, outcomes, 'g2', 'Read', { file_path: '/work/a.png' }, { result: IMAGE, text: '' })
+  await say($, 'image-end', 'The picture is fine.')
+  await $.turn.complete({ answer: 'The picture is fine.', durationMs: 2000, isAborted: false, turnId: 'image', reason: 'answer' })
+  const row = await mountUse($, tool('g2', 'Read', { file_path: '/work/a.png' }, IMAGE))
+  expect(await row.drawn()).toEqual(NOTHING)
+  await row.unmount()
+  const result = await mountResult($, 'g2', 'Read', IMAGE)
+  expect(await result.drawn()).toEqual(NOTHING)
+  await result.unmount()
+  const group = await mountGroup($, 'collapsed-row-g2', [tool('g2', 'Read', { file_path: '/work/a.png' }, IMAGE)])
+  expect(await group.drawn()).toEqual(NOTHING)
+  await group.unmount()
+  const ui = await mountUse($, tool('g1', 'Bash', { command: 'python3 toy.py' }, { stdout: 'a.png', stderr: '', interrupted: false }))
+  expect(await ui.find({ type: 'Text', text: exactly('2 calls · 2.0s') })).toBeDefined()
+  await ui.press({ key: 'turn-fold' })
+  const line = await ui.find({ type: 'Text', text: exactly('Read: a.png · image') })
+  expect(line?.props.color).toBe(COLORS.muted)
+  expect(line?.props.wrap).toBe('truncate-end')
+  await ui.unmount()
+})
+
+const QUESTION = { questions: [{ question: 'Which pool?', header: 'Pool', multiSelect: false, options: [{ label: 'A', description: 'Pool A' }] }] }
+const ANSWERED = 'User has answered your questions: "Which pool?"="A".'
+
+// A command, a question the user answers, and another command.
+async function questionTurn($: Engine, outcomes: Map<string, Outcome>) {
+  await $.turn.start({ text: 'go', turnId: 'ask' })
+  await call($, outcomes, 'q0', 'Bash', { command: 'python3 toy.py' }, { result: { stdout: '5', stderr: '', interrupted: false }, text: '5' })
+  await call($, outcomes, 'q1', 'AskUserQuestion', QUESTION, { result: { questions: [], answers: { 'Which pool?': 'A' } }, text: ANSWERED })
+  await call($, outcomes, 'q2', 'Bash', { command: 'make build' }, { result: { stdout: 'ok', stderr: '', interrupted: false }, text: 'ok' })
+  await say($, 'ask-end', 'Built for pool A.')
+  await $.turn.complete({ answer: 'Built for pool A.', durationMs: 3000, isAborted: false, turnId: 'ask', reason: 'answer' })
+}
+
+test('an answered question keeps its own rows and ends the block before it', async ($, on) => {
+  const outcomes = await blackbox($, on)
+  await questionTurn($, outcomes)
+  const question = await mountUse($, tool('q1', 'AskUserQuestion', QUESTION, ANSWERED))
+  expect(await question.find({ type: 'Text', text: 'native rendering' })).toBeDefined()
+  expect(await question.find({ key: 'turn-fold' })).toBeUndefined()
+  await question.unmount()
+  const result = await mountResult($, 'q1', 'AskUserQuestion', ANSWERED)
+  expect(await result.find({ type: 'Text', text: 'native rendering' })).toBeDefined()
+  await result.unmount()
+  const before = await mountUse($, tool('q0', 'Bash', { command: 'python3 toy.py' }, { stdout: '5', stderr: '', interrupted: false }))
+  expect((await before.find({ key: 'turn-fold' }))?.text).toBe('▸ Running python3 toy.py')
+  expect(await before.find({ type: 'Text', text: exactly('1 call · 1.0s') })).toBeDefined()
+  await before.unmount()
+  const after = await mountUse($, tool('q2', 'Bash', { command: 'make build' }, { stdout: 'ok', stderr: '', interrupted: false }))
+  expect((await after.find({ key: 'turn-fold' }))?.text).toBe('▸ Running make build')
+  expect(await after.find({ type: 'Text', text: exactly('1 call · 1.0s') })).toBeDefined()
+  await after.unmount()
+})
+
+test('a question waiting for its answer keeps its own row while the turn runs', async ($, on) => {
+  const outcomes = await blackbox($, on)
+  await $.turn.start({ text: 'go', turnId: 'asking' })
+  await call($, outcomes, 'w0', 'Bash', { command: 'python3 toy.py' }, { result: { stdout: '5', stderr: '', interrupted: false }, text: '5' })
+  const streaming = await mountUse($, tool('w1', 'AskUserQuestion', QUESTION, undefined, { isRunning: true }))
+  expect(await streaming.find({ type: 'Text', text: 'native rendering' })).toBeDefined()
+  await streaming.unmount()
+  await use($, 'w1', 'AskUserQuestion', QUESTION)
+  const waiting = await mountUse($, tool('w1', 'AskUserQuestion', QUESTION, undefined, { isRunning: true }))
+  expect(await waiting.find({ type: 'Text', text: 'native rendering' })).toBeDefined()
+  await waiting.unmount()
+})
+
+test('a group that holds a question draws forced open, so the question keeps its row', async ($, on) => {
+  const outcomes = await blackbox($, on)
+  await questionTurn($, outcomes)
+  const group = await mountGroup($, 'collapsed-row-q1', [
+    tool('q1', 'AskUserQuestion', QUESTION, ANSWERED),
+    tool('q2', 'Bash', { command: 'make build' }, { stdout: 'ok', stderr: '', interrupted: false }),
+  ])
+  expect(await group.find({ type: 'Text', text: 'expanded group' })).toBeDefined()
+  await group.unmount()
 })
 
 test('rows of a turn the level did not record draw at the compact level', async ($, on) => {

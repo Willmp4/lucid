@@ -212,6 +212,12 @@ final reply, each message next to the calls it follows. Thinking, text that is
 only whitespace, and a subagent's text close no block. Subagent (Agent) calls
 count as calls; a subagent's own calls do not.
 
+A question to the user (`AskUserQuestion`) folds into no block, so the
+questions answered stay in view as the turn goes on. It closes the open block
+as text does, and its `ToolUse` and `ToolResult` rows keep their native
+rendering, while it waits for an answer and after. It is no call of the turn,
+so no block counts it.
+
 ```text
 ❯ Fix the type error in bash-card.test.ts
 ⏺ Reading the failing test first.
@@ -232,7 +238,7 @@ count as calls; a subagent's own calls do not.
 | Event | What it records |
 |---|---|
 | `turn.start` | The turn running (`liveTurn`), only while the level is `blackbox` |
-| `session.append`, door `response`, no `agentId` | The row's text and `tool_use` blocks, in order: text closes the open block, and a call, keyed by `tool_use_id`, joins it or opens the next block, which starts at `$.clock.now()`; each call's turn in `owner` |
+| `session.append`, door `response`, no `agentId` | The row's text and `tool_use` blocks, in order: text or an `AskUserQuestion` call closes the open block, and any other call, keyed by `tool_use_id`, joins it or opens the next block, which starts at `$.clock.now()`; each call's turn in `owner` |
 | `tool.call`, no `agentId` | The call's stored result, the text the model read, its status, its error line, and for a Bash call the engine moved to the background, `background` with any `timedOutAfterMs`; the result passes on unchanged |
 | `session.append`, door `tool-result` | Each answered call's status and, for an error, its error line; each block that holds an answered call ends at `$.clock.now()` |
 | `turn.complete`, no `agentId` | The open block closes, ending then if the turn was aborted or no result answered it; an aborted turn marks its running calls interrupted |
@@ -247,8 +253,9 @@ the anchors of two blocks draws both, in turn order. Every other
 call row and its `ToolResult` draw an empty `Box`, which leaves no blank line.
 A call whose result the block cannot show keeps its own row: a Read, Grep,
 Glob, or Bash payload `cardOf` rejects, or another tool's result with no text.
-A group holding such a call draws forced open, and each of its `ToolUse` rows
-applies these rules. Rows of a turn the level did not record, such as a
+A Read that returns an image (`type: 'image'`) stays in the block, though no
+card draws it. A group holding a call that keeps its own row, or a question,
+draws forced open, and each of its `ToolUse` rows applies these rules. Rows of a turn the level did not record, such as a
 resumed session's history, draw at `compact`.
 
 **Background jobs.** A Bash result that carries `backgroundTaskId` stays in
@@ -337,7 +344,8 @@ card formats, such as Agent or an MCP tool, draws a card whose rows are the
 text the model read. A background job draws one muted row, cut to one terminal
 row: `Bash: <command> · moved to background after <N>s`, with `N` the seconds
 of `timedOutAfterMs`, or `Bash: <command> · running in background` when the
-result carries no timeout.
+result carries no timeout. An image read draws one muted row the same way:
+`Read: <path> · image`, with the path shortened.
 
 ## Bash, Read, and search cards
 
