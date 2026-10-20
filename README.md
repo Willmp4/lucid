@@ -46,9 +46,17 @@ Long code blocks keep their colours.
 When a reply explains a design, a flow, or a before-and-after change, Claude
 writes a short brief in an `excalidraw` code block. Claude Sonnet turns the
 brief into a hand-drawn Excalidraw diagram in the background, and the diagram
-draws in place of the block. Kitty and Ghostty show the picture; other
-terminals, and a terminal inside a multiplexer such as tmux, show it in text.
-Each card names its `.excalidraw` file, which opens in Excalidraw.
+draws in place of the block. Each card names its `.excalidraw` file, which
+opens in Excalidraw.
+
+Most terminals, and a terminal inside a multiplexer such as tmux, draw the
+diagram in text.
+
+![A one-line reply over its diagram card: the header excalidraw · How a diagram reaches a reply, two dashed panels of boxes and arrows drawn in text, and the path of the .excalidraw file](docs/diagram.svg)
+
+Kitty and Ghostty show the hand-drawn picture.
+
+![The same diagram drawn by hand: in the reply, Claude's brief leads to a waiting card, and in the background, the brief leads to Sonnet's spec, the renderer, and the redrawn card](docs/diagram.png)
 
 `/lucid diagrams off` turns them off: Claude stops writing them, and the
 blocks draw as code.

@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="879.2" height="562.8" viewBox="0 0 628 402" role="img" aria-label="a reply diagram drawn in terminal cells">
+<title>a reply diagram drawn in terminal cells</title>
+<rect x=".5" y=".5" width="627" height="401" rx="8" fill="#1e1e2e"/>
+<g transform="translate(12 6.5) scale(0.5)" fill="none" stroke="#9399b2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7l5 5-5 5"/><path d="M12 18h7"/></g>
+<text x="27" y="15" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="8.5" fill="#9399b2" letter-spacing=".3">a reply diagram drawn in terminal cells</text>
+<line x1="0" y1="23.5" x2="628" y2="23.5" stroke="#ffffff" stroke-opacity=".1"/>
+<g fill="none" stroke-linecap="square"><path d="M20 50H608M20 290H608M17 53V287M611 53V287M17 53A3 3 0 0 1 20 50M611 53A3 3 0 0 0 608 50M17 287A3 3 0 0 0 20 290M611 287A3 3 0 0 1 608 290" stroke="#45475a" stroke-width="1"/><path d="M56 110H176M260 110H380M416 110H530M386 134H404M56 158H176M260 158H380M416 158H530M56 206H176M260 206H380M416 206H530M392 230H410M56 254H176M260 254H380M416 254H530M53 113V155M53 209V251M179 113V155M179 209V251M257 113V155M257 209V251M383 113V155M383 209V251M413 113V155M413 209V251M533 113V155M533 209V251M113 164V188M467 164V188M53 113A3 3 0 0 1 56 110M179 113A3 3 0 0 0 176 110M257 113A3 3 0 0 1 260 110M383 113A3 3 0 0 0 380 110M413 113A3 3 0 0 1 416 110M533 113A3 3 0 0 0 530 110M53 155A3 3 0 0 0 56 158M179 155A3 3 0 0 1 176 158M257 155A3 3 0 0 0 260 158M383 155A3 3 0 0 1 380 158M413 155A3 3 0 0 0 416 158M533 155A3 3 0 0 1 530 158M53 209A3 3 0 0 1 56 206M179 209A3 3 0 0 0 176 206M257 209A3 3 0 0 1 260 206M383 209A3 3 0 0 0 380 206M413 209A3 3 0 0 1 416 206M533 209A3 3 0 0 0 530 206M53 251A3 3 0 0 0 56 254M179 251A3 3 0 0 1 176 254M257 251A3 3 0 0 0 260 254M383 251A3 3 0 0 1 380 254M413 251A3 3 0 0 0 416 254M533 251A3 3 0 0 1 530 254" stroke="#cdd6f4" stroke-width="1"/><path d="M14 338H614M14 362H614" stroke="#888888" stroke-width="1"/><path d="M35 101V104M35 260V263M197 101V104M197 260V263M239 101V104M239 260V263M551 101V104M551 260V263M35 101A3 3 0 0 1 38 98M197 101A3 3 0 0 0 194 98M239 101A3 3 0 0 1 242 98M551 101A3 3 0 0 0 548 98M35 263A3 3 0 0 0 38 266M197 263A3 3 0 0 1 194 266M239 263A3 3 0 0 0 242 266M551 263A3 3 0 0 1 548 266" stroke="#adb5bd" stroke-width="1"/></g>
+<g font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#cdd6f4">
+<text x="14 20 26 32 38 44 50 56 62 68 74 80 86 92 98 104 110 116 122 128 134 140 146 152 158 164 170 176 182 188 194 200 206 212 218 224 230 236 242 248 254 260 266 272 278 284 290 296 302 308 314 320 326 332 338 344 350 356 362 368 374 380 386 392 398 404 410 416 422 428 434 440 446 452 458 464 470 476 482 488 494 500 506 512 518 524 530 536 542 548 554 560 566" y="41.4" xml:space="preserve">A diagram fence draws as a card in its place, and the card redraws once the picture is ready.</text>
+<text x="26 32 38 44 50 56 62 68 74 80 86 92 98 104 110 116 122 128 134 140 146 152 158 164 170 176 182 188 194 200 206 212 218 224 230 236 242 248 254 260 266 272" y="65.4" xml:space="preserve"><tspan fill="#fab387" font-weight="700">excalidraw · How a diagram reaches a reply</tspan></text>
+<text x="32 38 44 50 56 62 68 74 80 86 92 98" y="77.4" xml:space="preserve"><tspan fill="#495057">In the reply</tspan></text>
+<text x="236 242 248 254 260 266 272 278 284 290 296 302 308 314 320 326 332" y="77.4" xml:space="preserve"><tspan fill="#495057">In the background</tspan></text>
+<text x="38 44 50 56 62 68 74 80 86 92 98 104 110 116 122 128 134 140 146 152 158 164 170 176 182 188" y="101.4" xml:space="preserve"><tspan fill="#adb5bd">╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌</tspan></text>
+<text x="242 248 254 260 266 272 278 284 290 296 302 308 314 320 326 332 338 344 350 356 362 368 374 380 386 392 398 404 410 416 422 428 434 440 446 452 458 464 470 476 482 488 494 500 506 512 518 524 530 536 542" y="101.4" xml:space="preserve"><tspan fill="#adb5bd">╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌</tspan></text>
+<text x="32" y="113.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="194" y="113.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="236" y="113.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="548" y="113.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="32" y="125.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="74 80 86 92 98 104 110 116 122 128 134 140 146 152" y="125.4" xml:space="preserve">Claude&apos;s brief</text>
+<text x="194" y="125.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="236" y="125.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="278 284 290 296 302 308 314 320 326 332 338 344 350 356" y="125.4" xml:space="preserve">Claude&apos;s brief</text>
+<text x="434 440 446 452 458 464 470 476 482 488 494 500 506" y="125.4" xml:space="preserve">Sonnet&apos;s spec</text>
+<text x="548" y="125.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="32" y="137.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="68 74 80 86 92 98 104 110 116 122 128 134 140 146 152 158" y="137.4" xml:space="preserve"><tspan fill="#999999">excalidraw fence</tspan></text>
+<text x="194" y="137.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="236" y="137.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="272 278 284 290 296 302 308 314 320 326 332 338 344 350 356 362" y="137.4" xml:space="preserve"><tspan fill="#999999">excalidraw fence</tspan></text>
+<text x="404" y="137.4" xml:space="preserve">▶</text>
+<text x="458 464 470 476 482" y="137.4" xml:space="preserve"><tspan fill="#999999">.flow</tspan></text>
+<text x="548" y="137.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="32" y="149.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="194" y="149.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="236" y="149.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="548" y="149.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="32" y="161.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="194" y="161.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="236" y="161.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="548" y="161.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="32" y="173.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="194" y="173.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="236" y="173.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="548" y="173.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="32" y="185.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="194" y="185.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="236" y="185.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="548" y="185.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="32" y="197.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="110" y="197.4" xml:space="preserve">▼</text>
+<text x="194" y="197.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="236" y="197.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="464" y="197.4" xml:space="preserve">▼</text>
+<text x="548" y="197.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="32" y="209.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="194" y="209.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="236" y="209.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="548" y="209.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="32" y="221.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="74 80 86 92 98 104 110 116 122 128 134 140 146 152" y="221.4" xml:space="preserve">the card waits</text>
+<text x="194" y="221.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="236" y="221.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="272 278 284 290 296 302 308 314 320 326 332 338 344 350 356 362" y="221.4" xml:space="preserve">the card redraws</text>
+<text x="434 440 446 452 458 464 470 476 482 488 494 500" y="221.4" xml:space="preserve">the renderer</text>
+<text x="548" y="221.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="32" y="233.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="92 98 104 110 116 122 128 134" y="233.4" xml:space="preserve"><tspan fill="#999999">drawing…</tspan></text>
+<text x="194" y="233.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="236" y="233.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="284 290 296 302 308 314 320 326 332 338 344 350" y="233.4" xml:space="preserve"><tspan fill="#999999">PNG or cells</tspan></text>
+<text x="386" y="233.4" xml:space="preserve">◀</text>
+<text x="440 446 452 458 464 470 476 482 488 494" y="233.4" xml:space="preserve"><tspan fill="#999999">render.mjs</tspan></text>
+<text x="548" y="233.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="32" y="245.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="194" y="245.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="236" y="245.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="548" y="245.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="32" y="257.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="194" y="257.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="236" y="257.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="548" y="257.4" xml:space="preserve"><tspan fill="#adb5bd">╎</tspan></text>
+<text x="38 44 50 56 62 68 74 80 86 92 98 104 110 116 122 128 134 140 146 152 158 164 170 176 182 188" y="269.4" xml:space="preserve"><tspan fill="#adb5bd">╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌</tspan></text>
+<text x="242 248 254 260 266 272 278 284 290 296 302 308 314 320 326 332 338 344 350 356 362 368 374 380 386 392 398 404 410 416 422 428 434 440 446 452 458 464 470 476 482 488 494 500 506 512 518 524 530 536 542" y="269.4" xml:space="preserve"><tspan fill="#adb5bd">╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌</tspan></text>
+<text x="26 32 38 44 50 56 62 68 74 80 86 92 98 104 110 116 122 128 134 140 146 152 158 164 170 176 182 188 194 200 206 212 218 224 230 236 242 248 254 260" y="281.4" xml:space="preserve"><tspan fill="#7f849c">/tmp/.cache/lucid/2ee825g24oq.excalidraw</tspan></text>
+<text x="14 20 26 32 38 44 50 56 62 68 74 80 86 92" y="305.4" xml:space="preserve"><tspan fill="#cba6f7">◆ </tspan><tspan fill="#7f849c">Napped in 4s</tspan></text>
+<text x="26 32 38 44 50 56 62 68 74 80 86 92 98 104 110 116 122 128 134" y="317.4" xml:space="preserve"><tspan fill="#cba6f7">▱▱▱▱▱▱▱▱</tspan><tspan fill="#7f849c"> 5% context</tspan></text>
+<text x="170 176 182 188 194 200 206 212 218 224 230 236 242 248 254 260 266 272 278 284" y="317.4" xml:space="preserve"><tspan fill="#cba6f7">▱▱▱▱▱▱▱▱</tspan><tspan fill="#7f849c"> 0% 5h · 51m</tspan></text>
+<text x="320 326 332 338 344 350 356 362 368 374 380 386 392 398 404 410 416 422 428 434 440 446 452" y="317.4" xml:space="preserve"><tspan fill="#cba6f7">▰▰▱▱▱▱▱▱</tspan><tspan fill="#7f849c"> 26% 7d · 5d13h</tspan></text>
+<text x="494 500 506 512 518 524 530 536 542 548" y="317.4" xml:space="preserve"><tspan fill="#b1b9f9">0</tspan><tspan fill="#999999">: Compact</tspan></text>
+<text x="590 596 602" y="317.4" xml:space="preserve"><tspan fill="#999999">[-]</tspan></text>
+<text x="14 20" y="353.4" xml:space="preserve">❯ </text>
+<text x="26 32 38 44 50 56 62 68 74 80 86" y="377.4" xml:space="preserve"><tspan fill="#999999">doc voice ✓</tspan></text>
+<text x="26 32 38 44 50 56 62 68 74 80 86 92 98 104 110 116 122 128 134 140 146 152 158 164 170 176 182 188 194 200 206 212 218 224 230 236 242 248 254 260 266 272 278 284 290 296 302 308 314 320 326 332 338 344 350 356 362 368 374 380 386 392" y="389.4" xml:space="preserve"><tspan fill="#999999">-- INSERT --</tspan> <tspan fill="#ffc107">⏵⏵ auto mode on</tspan><tspan fill="#999999"> (shift+tab to cycle) · ← 8 agents</tspan></text>
+</g>
+<rect x=".5" y=".5" width="627" height="401" rx="8" fill="none" stroke="#ffffff" stroke-opacity=".16"/>
+</svg>

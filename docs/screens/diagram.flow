@@ -1,0 +1,19 @@
+title: How a diagram reaches a reply
+width: 200
+node brief: Claude's brief | excalidraw fence
+node wait: the card waits | drawing…
+node spec: Sonnet's spec | .flow
+node draw: the renderer | render.mjs
+node done: the card redraws | PNG or cells
+
+panel In the reply
+  brief
+  wait
+  brief -> wait
+
+panel In the background
+  brief, spec
+  done, draw
+  brief -> spec
+  spec -> draw
+  draw -> done

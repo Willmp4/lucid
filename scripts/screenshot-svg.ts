@@ -10,6 +10,10 @@
 //
 //   bun scripts/screenshot-svg.ts --all
 //
+// docs/diagram.png is the renderer's own picture of docs/screens/diagram.flow, the brief behind
+// the diagram screen. To redraw it, run `XDG_CACHE_HOME=<dir> node renderer/render.mjs
+// 2ee825g24oq < docs/screens/diagram.flow` and copy <dir>/lucid/2ee825g24oq.png.
+//
 // The picture keeps the terminal's grid: each character sits at its own column, and box-drawing
 // lines and block elements draw as shapes, so borders line up whatever font the viewer uses.
 
@@ -598,6 +602,7 @@ export const TITLES: Record<string, string> = {
   tldr: 'tldr · a reply with its summary beneath',
   'reply-table': 'a reply table wider than the pane',
   'long-code': 'a reply code block past 9,000 characters',
+  diagram: 'a reply diagram drawn in terminal cells',
   'usage-below': '/lucid usage below',
 }
 
