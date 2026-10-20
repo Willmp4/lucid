@@ -13,12 +13,12 @@ test('densityCommand sets, reports, and refuses levels', () => {
   expect(densityCommand('density compact', 'balanced')).toEqual({ density: 'compact', text: 'card density: compact' })
   expect(densityCommand('  density   FULL ', 'compact')).toEqual({ density: 'full', text: 'card density: full' })
   expect(densityCommand('density', 'compact')).toEqual({ text: 'card density: compact' })
-  expect(densityCommand('density loud', 'balanced')).toEqual({ text: 'usage: /omp density full|balanced|compact|blackbox' })
-  expect(densityCommand('density full extra', 'balanced')).toEqual({ text: 'usage: /omp density full|balanced|compact|blackbox' })
+  expect(densityCommand('density loud', 'balanced')).toEqual({ text: 'usage: /lucid density full|balanced|compact|blackbox' })
+  expect(densityCommand('density full extra', 'balanced')).toEqual({ text: 'usage: /lucid density full|balanced|compact|blackbox' })
 })
 
-const omp = (args: string) => ({
-  command: 'omp', args, origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 100 },
+const lucid = (args: string) => ({
+  command: 'lucid', args, origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 100 },
 })
 
 const STOCK: RenderElement = { type: 'Text', props: {}, children: ['native rendering'] }
@@ -45,33 +45,33 @@ const READ = {
   tool_use_id: 'read1', tool: 'Read', input: { file_path: '/work/a.ts' }, isRunning: false, isErrored: false, isInterrupted: false,
   output: { type: 'text', file: { filePath: '/work/a.ts', content: 'first line\nsecond line', startLine: 1, numLines: 2, totalLines: 2 } },
 }
-const SITE = { plugin: 'omp-blocks', surface: 'terminal', component: 'ToolUse', viewport: { columns: 100, rows: 40 } } as const
+const SITE = { plugin: 'lucid', surface: 'terminal', component: 'ToolUse', viewport: { columns: 100, rows: 40 } } as const
 
-test('/omp density reports the level, sets one, and refuses an unknown one', async ($, on) => {
+test('/lucid density reports the level, sets one, and refuses an unknown one', async ($, on) => {
   const { store } = setup(on)
-  expect(await $.command.run(omp('density'))).toMatchObject({ text: 'card density: balanced' })
-  expect(await $.command.run(omp('density compact'))).toMatchObject({ text: 'card density: compact' })
+  expect(await $.command.run(lucid('density'))).toMatchObject({ text: 'card density: balanced' })
+  expect(await $.command.run(lucid('density compact'))).toMatchObject({ text: 'card density: compact' })
   expect(store.get('density')).toBe('compact')
-  expect(await $.command.run(omp('density'))).toMatchObject({ text: 'card density: compact' })
-  expect(await $.command.run(omp('density loud'))).toMatchObject({ text: 'usage: /omp density full|balanced|compact|blackbox' })
+  expect(await $.command.run(lucid('density'))).toMatchObject({ text: 'card density: compact' })
+  expect(await $.command.run(lucid('density loud'))).toMatchObject({ text: 'usage: /lucid density full|balanced|compact|blackbox' })
   expect(store.get('density')).toBe('compact')
 })
 
-test('/omp with no known setting lists every setting', async ($, on) => {
+test('/lucid with no known setting lists every setting', async ($, on) => {
   setup(on)
   for (const args of ['', 'colour red']) {
-    expect(await $.command.run(omp(args))).toMatchObject({ text: 'usage: /omp usage above|below, /omp density full|balanced|compact|blackbox, /omp speak on|off, or /omp voice <name>' })
+    expect(await $.command.run(lucid(args))).toMatchObject({ text: 'usage: /lucid usage above|below, /lucid density full|balanced|compact|blackbox, /lucid speak on|off, /lucid voice <name>, or /lucid diagrams on|off' })
   }
-  expect(await $.command.run(omp('usage'))).toMatchObject({ text: 'usage meters: above the prompt' })
+  expect(await $.command.run(lucid('usage'))).toMatchObject({ text: 'usage meters: above the prompt' })
 })
 
 test('the command names every setting when it registers', async ($, on) => {
   const { commands } = setup(on)
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
   expect(commands).toEqual([expect.objectContaining({
-    name: 'omp',
-    description: 'omp-blocks settings: /omp usage above|below, /omp density full|balanced|compact|blackbox, /omp speak on|off, /omp voice <name>',
-    argumentHint: 'usage above|below | density full|balanced|compact|blackbox | speak on|off | voice <name>',
+    name: 'lucid',
+    description: 'lucid settings: /lucid usage above|below, /lucid density full|balanced|compact|blackbox, /lucid speak on|off, /lucid voice <name>, /lucid diagrams on|off',
+    argumentHint: 'usage above|below | density full|balanced|compact|blackbox | speak on|off | voice <name> | diagrams on|off',
   })])
 })
 
@@ -85,7 +85,7 @@ test('a stored level loads at session start, and a bad one reads as balanced', a
 
   store.set('density', 'loud')
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
-  expect(await $.command.run(omp('density'))).toMatchObject({ text: 'card density: balanced' })
+  expect(await $.command.run(lucid('density'))).toMatchObject({ text: 'card density: balanced' })
   ui = await $.ui.mount({ ...SITE, requestId: 'read1', props: READ })
   expect(await ui.find({ type: 'Text', text: 'second line' })).toBeUndefined()
   await ui.unmount()
@@ -96,5 +96,5 @@ test('a /clear reloads the stored level', async ($, on) => {
   on('classic.SessionStart', () => ({}))
   store.set('density', 'compact')
   await $.classic.SessionStart({ source: 'clear' })
-  expect(await $.command.run(omp('density'))).toMatchObject({ text: 'card density: compact' })
+  expect(await $.command.run(lucid('density'))).toMatchObject({ text: 'card density: compact' })
 })

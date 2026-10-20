@@ -9,7 +9,7 @@ const meterColor = (percent: number) => (percent >= 95 ? COLORS.del : percent >=
 export function drawMeters(ui: Pick<ElementTable<'terminal'>, 'Text'>, meters: readonly UsageMeter[]) {
   const { Text } = ui
   return (
-    <Text key="omp-usage" wrap="truncate-end">
+    <Text key="lucid-usage" wrap="truncate-end">
       {meters.map((meter, i) => [
         i > 0 ? <Text key={`gap-${i}`}>{'   '}</Text> : null,
         <Text key={`bar-${i}`} color={meterColor(meter.percent)}>{meter.bar}</Text>,

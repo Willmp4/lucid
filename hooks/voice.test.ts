@@ -14,13 +14,13 @@ test('voiceCommand sets a name as typed, reports the voice, and refuses other se
   expect(voiceCommand('voice samantha', 'Daniel')).toEqual({ voice: 'samantha', text: 'speech voice: samantha' })
   expect(voiceCommand('voice', 'Daniel')).toEqual({ text: 'speech voice: Daniel' })
   expect(voiceCommand(' voice  ', 'Samantha')).toEqual({ text: 'speech voice: Samantha' })
-  expect(voiceCommand('voices Daniel', 'Samantha')).toEqual({ text: 'usage: /omp voice <name>' })
-  expect(voiceCommand('', 'Samantha')).toEqual({ text: 'usage: /omp voice <name>' })
+  expect(voiceCommand('voices Daniel', 'Samantha')).toEqual({ text: 'usage: /lucid voice <name>' })
+  expect(voiceCommand('', 'Samantha')).toEqual({ text: 'usage: /lucid voice <name>' })
 })
 
-// What `/omp <args>` typed at the prompt raises.
-const omp = (args: string) => ({
-  command: 'omp', args, origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 100 },
+// What `/lucid <args>` typed at the prompt raises.
+const lucid = (args: string) => ({
+  command: 'lucid', args, origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 100 },
 })
 
 function setup(on: On) {
@@ -37,24 +37,24 @@ function setup(on: On) {
   return store
 }
 
-test('/omp voice reports the voice, sets one as typed, and stores it', async ($, on) => {
+test('/lucid voice reports the voice, sets one as typed, and stores it', async ($, on) => {
   const store = setup(on)
-  expect(await $.command.run(omp('voice'))).toMatchObject({ text: 'speech voice: Samantha' })
+  expect(await $.command.run(lucid('voice'))).toMatchObject({ text: 'speech voice: Samantha' })
   expect(store.has('voice')).toBe(false)
-  expect(await $.command.run(omp('Voice Eddy (English (US))'))).toMatchObject({ text: 'speech voice: Eddy (English (US))' })
+  expect(await $.command.run(lucid('Voice Eddy (English (US))'))).toMatchObject({ text: 'speech voice: Eddy (English (US))' })
   expect(store.get('voice')).toBe('Eddy (English (US))')
-  expect(await $.command.run(omp('voice'))).toMatchObject({ text: 'speech voice: Eddy (English (US))' })
+  expect(await $.command.run(lucid('voice'))).toMatchObject({ text: 'speech voice: Eddy (English (US))' })
 })
 
 test('a stored voice loads at session start, and a bad one reads as Samantha', async ($, on) => {
   const store = setup(on)
   store.set('voice', 'Daniel')
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
-  expect(await $.command.run(omp('voice'))).toMatchObject({ text: 'speech voice: Daniel' })
+  expect(await $.command.run(lucid('voice'))).toMatchObject({ text: 'speech voice: Daniel' })
 
   store.set('voice', 7)
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
-  expect(await $.command.run(omp('voice'))).toMatchObject({ text: 'speech voice: Samantha' })
+  expect(await $.command.run(lucid('voice'))).toMatchObject({ text: 'speech voice: Samantha' })
 })
 
 for (const source of ['clear', 'resume', 'fork'] as const) {
@@ -62,6 +62,6 @@ for (const source of ['clear', 'resume', 'fork'] as const) {
     const store = setup(on)
     store.set('voice', 'Daniel')
     await $.classic.SessionStart({ source })
-    expect(await $.command.run(omp('voice'))).toMatchObject({ text: 'speech voice: Daniel' })
+    expect(await $.command.run(lucid('voice'))).toMatchObject({ text: 'speech voice: Daniel' })
   })
 }

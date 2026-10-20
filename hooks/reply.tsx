@@ -1,7 +1,8 @@
 import type { ElementTable, RenderElement } from 'claude-code'
+import type { Part } from './long-fence'
 import { COLORS } from './text-style'
 import { tableLines } from './reply-table'
-import type { Run, Segment, Style } from './reply-table'
+import type { Run, Style } from './reply-table'
 
 type Ui = ElementTable<'terminal'>
 
@@ -37,15 +38,17 @@ function drawTable(ui: Ui, lines: readonly Run[][], key: string) {
 
 export const replyColumns = (viewportColumns: number) => Math.max(20, viewportColumns - REPLY_INSET)
 
-// `drawn` holds skins' drawing of each text segment, where skins drew one; the rest of
-// the text keeps Claude Code's own markdown.
-export function drawReply(ui: Ui, segments: readonly Segment[], columns: number, drawn: readonly (RenderElement | undefined)[]) {
+// `drawn` holds each diagram's card, and skins' drawing of each text segment where skins drew
+// one; the rest of the text keeps Claude Code's own markdown.
+export function drawReply(ui: Ui, segments: readonly Part[], columns: number, drawn: readonly (RenderElement | undefined)[]) {
   const { Box, Markdown } = ui
   return (
     <Box flexDirection="column">
       {segments.map((segment, i) => segment.kind === 'table'
         ? drawTable(ui, tableLines(segment, columns), `table-${i}`)
-        : <Box key={`text-${i}`} flexDirection="column">{drawn[i] ?? <Markdown text={segment.text} />}</Box>)}
+        : segment.kind === 'diagram'
+          ? <Box key={`diagram-${i}`} flexDirection="column">{drawn[i]}</Box>
+          : <Box key={`text-${i}`} flexDirection="column">{drawn[i] ?? <Markdown text={segment.text} />}</Box>)}
     </Box>
   )
 }

@@ -34,9 +34,29 @@ export type Summary =
   | { state: 'ready'; text: string }
   | { state: 'failed'; reason: string }
 
+// A diagram's files as renderer/render.mjs writes them: the PNG where it could draw one, the
+// SVG, the version in terminal cells and its width in columns, the .excalidraw scene, the
+// PNG's size in pixels, and the diagram's title.
+export type DiagramFiles = {
+  png?: string
+  svg: string
+  cells: string
+  columns: number
+  excalidraw: string
+  width: number
+  height: number
+  title: string
+}
+// A diagram fence's picture: being drawn by the load that `load` names, at `step`; drawn; or
+// failed with its reason.
+export type Diagram =
+  | { status: 'drawing'; step: string; load: string }
+  | ({ status: 'ready' } & DiagramFiles)
+  | { status: 'failed'; reason: string }
+
 declare module 'claude-code' {
   interface PluginState {
-    'omp-blocks': {
+    lucid: {
       expanded: StateFamily<boolean>
       opened: StateFamily<boolean>
       ungrouped: StateFamily<boolean>
@@ -59,6 +79,8 @@ declare module 'claude-code' {
       speech: number
       speak: boolean
       voice: string
+      diagram: StateFamily<Diagram>
+      diagrams: boolean
     }
   }
 }

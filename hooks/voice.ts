@@ -2,14 +2,14 @@
 // takes the system's chosen voice, and with none chosen it plays silence.
 
 export const DEFAULT_VOICE = 'Samantha'
-const VOICE_HELP = 'usage: /omp voice <name>'
+const VOICE_HELP = 'usage: /lucid voice <name>'
 
 export const voiceOf = (value: unknown): string =>
   typeof value === 'string' && value.trim() !== '' ? value.trim() : DEFAULT_VOICE
 
 const describe = (voice: string) => `speech voice: ${voice}`
 
-// `/omp voice [name]`: a name to store as typed, past its edges' whitespace, or only text to
+// `/lucid voice [name]`: a name to store as typed, past its edges' whitespace, or only text to
 // show. A name can hold spaces, as `Eddy (English (US))` does.
 export function voiceCommand(args: string, current: string): { voice?: string; text: string } {
   const typed = args.trim()

@@ -10,8 +10,8 @@ import {
   statusLine, titleOf,
 } from './turn-model'
 
-const omp = (args: string) => ({
-  command: 'omp', args, origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 100 },
+const lucid = (args: string) => ({
+  command: 'lucid', args, origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 100 },
 })
 const STOCK: RenderElement = { type: 'Text', props: {}, children: ['native rendering'] }
 
@@ -43,7 +43,7 @@ function setup(on: On) {
 const exactly = (text: string) => new RegExp(`^${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`)
 
 async function level($: Engine, density: string) {
-  return $.command.run(omp(`density ${density}`))
+  return $.command.run(lucid(`density ${density}`))
 }
 
 // The setting.
@@ -55,14 +55,14 @@ test('densityOf reads blackbox as a level', () => {
 test('densityCommand sets and reports blackbox, and lists it in the usage line', () => {
   expect(densityCommand('density blackbox', 'balanced')).toEqual({ density: 'blackbox', text: 'card density: blackbox' })
   expect(densityCommand('density', 'blackbox')).toEqual({ text: 'card density: blackbox' })
-  expect(densityCommand('density loud', 'balanced')).toEqual({ text: 'usage: /omp density full|balanced|compact|blackbox' })
+  expect(densityCommand('density loud', 'balanced')).toEqual({ text: 'usage: /lucid density full|balanced|compact|blackbox' })
 })
 
-test('/omp density blackbox persists in the store', async ($, on) => {
+test('/lucid density blackbox persists in the store', async ($, on) => {
   const { store } = setup(on)
   expect(await level($, 'blackbox')).toMatchObject({ text: 'card density: blackbox' })
   expect(store.get('density')).toBe('blackbox')
-  expect(await $.command.run(omp('density'))).toMatchObject({ text: 'card density: blackbox' })
+  expect(await $.command.run(lucid('density'))).toMatchObject({ text: 'card density: blackbox' })
 })
 
 // The turn model.
@@ -264,10 +264,15 @@ test('a result row yields each result, its error state, and its text', () => {
 
 // The block, drawn through the events a session raises.
 
-const SITE = { plugin: 'omp-blocks', surface: 'terminal', viewport: { columns: 100, rows: 40 } } as const
+const SITE = { plugin: 'lucid', surface: 'terminal', viewport: { columns: 100, rows: 40 } } as const
 type Block = { type: string; [field: string]: unknown }
-// What a hidden row draws: an empty Box, with no text and no children.
+// What a hidden row draws: an empty Box, with no text and no children. The engine marks the
+// root of each hook's drawing with the plugin that drew it (`part`), which `bare` leaves aside.
 const NOTHING = { type: 'Box' }
+const bare = (tree: unknown) => {
+  const { part: _, ...rest } = tree as Block
+  return rest
+}
 // A call's result, and how long it runs: a second unless `ms` says otherwise.
 type Outcome = { result: unknown; text?: string; isError?: true; ms?: number }
 
@@ -416,7 +421,7 @@ test('every later call row of a block draws nothing: calls, groups, and results'
     await mountGroup($, 'collapsed-row-c3', [BASH_ROW]),
   ]
   for (const row of rows) {
-    expect(await row.drawn()).toEqual(NOTHING)
+    expect(bare(await row.drawn())).toEqual(NOTHING)
     await row.unmount()
   }
 })
@@ -477,7 +482,7 @@ test('a group of calls no card formats draws its block, so an MCP call folds wit
   expect(await group.find({ text: 'native rendering' })).toBeUndefined()
   await group.unmount()
   const later = await mountUse($, tool('m3', 'Bash', { command: 'python3 toy.py' }, { stdout: 'a', stderr: '', interrupted: false }))
-  expect(await later.drawn()).toEqual(NOTHING)
+  expect(bare(await later.drawn())).toEqual(NOTHING)
   await later.unmount()
 })
 
@@ -592,10 +597,10 @@ test('a later call still streaming in draws nothing while its block is open', as
   await $.turn.start({ text: 'go', turnId: 'stream' })
   await call($, outcomes, 's1', 'Bash', { command: 'ls' }, { result: { stdout: 'a', stderr: '', interrupted: false }, text: 'a' })
   const streaming = await mountUse($, tool('s2', 'Write', { file_path: '/work/out.txt' }, undefined, { isRunning: true }))
-  expect(await streaming.drawn()).toEqual(NOTHING)
+  expect(bare(await streaming.drawn())).toEqual(NOTHING)
   await streaming.unmount()
   const group = await mountGroup($, 'collapsed-toolu_s3', [tool('s3', 'Read', { file_path: '/work/a.txt' }, undefined, { isRunning: true })], true)
-  expect(await group.drawn()).toEqual(NOTHING)
+  expect(bare(await group.drawn())).toEqual(NOTHING)
   await group.unmount()
 })
 
@@ -621,7 +626,7 @@ test('thinking and empty text close no block', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: exactly('2 calls · 2.0s') })).toBeDefined()
   await ui.unmount()
   const later = await mountUse($, tool('h2', 'Bash', { command: 'python3 toy.py' }, { stdout: '5', stderr: '', interrupted: false }))
-  expect(await later.drawn()).toEqual(NOTHING)
+  expect(bare(await later.drawn())).toEqual(NOTHING)
   await later.unmount()
 })
 
@@ -657,7 +662,7 @@ test('an Agent call counts as a call and its result opens in the expanded block'
   await ui.press({ key: 'expand-output-a1' })
   expect(await ui.find({ type: 'Text', text: exactly('done') })).toBeDefined()
   const result = await mountResult($, 'a1', 'Agent', { status: 'completed' })
-  expect(await result.drawn()).toEqual(NOTHING)
+  expect(bare(await result.drawn())).toEqual(NOTHING)
   await result.unmount()
   await ui.unmount()
 })
@@ -685,13 +690,13 @@ test('an image read folds into its block, and the open block shows it as one mut
   await say($, 'image-end', 'The picture is fine.')
   await $.turn.complete({ answer: 'The picture is fine.', durationMs: 2000, isAborted: false, turnId: 'image', reason: 'answer' })
   const row = await mountUse($, tool('g2', 'Read', { file_path: '/work/a.png' }, IMAGE))
-  expect(await row.drawn()).toEqual(NOTHING)
+  expect(bare(await row.drawn())).toEqual(NOTHING)
   await row.unmount()
   const result = await mountResult($, 'g2', 'Read', IMAGE)
-  expect(await result.drawn()).toEqual(NOTHING)
+  expect(bare(await result.drawn())).toEqual(NOTHING)
   await result.unmount()
   const group = await mountGroup($, 'collapsed-row-g2', [tool('g2', 'Read', { file_path: '/work/a.png' }, IMAGE)])
-  expect(await group.drawn()).toEqual(NOTHING)
+  expect(bare(await group.drawn())).toEqual(NOTHING)
   await group.unmount()
   const ui = await mountUse($, tool('g1', 'Bash', { command: 'python3 toy.py' }, { stdout: 'a.png', stderr: '', interrupted: false }))
   expect(await ui.find({ type: 'Text', text: exactly('2 calls · 2.0s') })).toBeDefined()
@@ -839,7 +844,7 @@ test('a subagent’s text closes no block of the turn', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: exactly('2 calls · Read: a.txt') })).toBeDefined()
   await ui.unmount()
   const later = await mountUse($, tool('m2', 'Read', { file_path: '/work/a.txt' }, undefined, { isRunning: true }))
-  expect(await later.drawn()).toEqual(NOTHING)
+  expect(bare(await later.drawn())).toEqual(NOTHING)
   await later.unmount()
 })
 
@@ -884,7 +889,7 @@ test('a call moved to the background on its timeout draws nothing of its own', a
     await mountGroup($, 'collapsed-row-b2', [tool('b2', 'Bash', BUILD, TIMED_OUT)]),
   ]
   for (const row of rows) {
-    expect(await row.drawn()).toEqual(NOTHING)
+    expect(bare(await row.drawn())).toEqual(NOTHING)
     await row.unmount()
   }
 })
@@ -915,7 +920,7 @@ test('a run_in_background call stays inside the block, even as its first call', 
   expect(await ui.find({ type: 'Text', text: exactly('Bash: sleep 3 && echo done · running in background') })).toBeDefined()
   await ui.unmount()
   const result = await mountResult($, 'r1', 'Bash', STARTED)
-  expect(await result.drawn()).toEqual(NOTHING)
+  expect(bare(await result.drawn())).toEqual(NOTHING)
   await result.unmount()
 })
 
@@ -965,7 +970,7 @@ test('the other levels keep the native row for a background job', async ($, on) 
 
 const LONG_COMMAND = 'python3 scripts/regenerate-the-inventory-fixtures-for-every-warehouse-region.py --all && cat out.txt'
 const LONG_TITLE = '▸ Running python3 regenerate-the-inventory-fixtures-for-every-warehouse-region.py'
-const LONG_ERROR = 'fatal: ../omp-blocks-wide already exists and is not an empty directory, so the worktree cannot be added'
+const LONG_ERROR = 'fatal: ../lucid-blocks-wide already exists and is not an empty directory, so the worktree cannot be added'
 
 async function longTurn($: Engine, outcomes: Map<string, Outcome>) {
   await $.turn.start({ text: 'go', turnId: 'long' })

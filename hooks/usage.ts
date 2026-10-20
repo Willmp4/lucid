@@ -8,7 +8,7 @@ type Usage = {
   rateLimits: readonly { kind: string; percentUsed: number }[]
 }
 
-const USAGE_HELP = 'usage: /omp usage above|below'
+const USAGE_HELP = 'usage: /lucid usage above|below'
 
 // `five_hour` reads as `5h`, `seven_day` as `7d`, matching the skins band.
 function limitLabel(kind: string): string {
@@ -37,7 +37,7 @@ export const placementOf = (value: unknown): UsagePlacement => (value === 'below
 
 const describe = (placement: UsagePlacement) => `usage meters: ${placement} the prompt`
 
-// `/omp usage [above|below]`: a placement to store, or only text to show.
+// `/lucid usage [above|below]`: a placement to store, or only text to show.
 export function usageCommand(args: string, current: UsagePlacement): { placement?: UsagePlacement; text: string } {
   const [setting, value, extra] = args.trim().toLowerCase().split(/\s+/)
   if (setting !== 'usage' || extra !== undefined) return { text: USAGE_HELP }

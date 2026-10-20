@@ -101,7 +101,7 @@ test('a streaming fence that has not closed stays text', () => {
 })
 
 const STOCK: RenderElement = { type: 'Text', props: {}, children: ['native rendering'] }
-const REPLY = { plugin: 'omp-blocks', component: 'AssistantMessage', viewport: { columns: 100, rows: 40 } } as const
+const REPLY = { plugin: 'lucid', component: 'AssistantMessage', viewport: { columns: 100, rows: 40 } } as const
 const setup = (on: On) => on('ui.render', () => STOCK)
 
 test('a terminal reply with a long fence draws each piece, where skins is absent, as Markdown', async ($, on) => {

@@ -5,9 +5,13 @@ import type { CallBody, CallRecord, CallStatus, Density, Mark, ReplyRow, Summary
 import { EDIT_TOOLS, blockOf, drawBlock } from './block'
 import type { CallProps } from './block'
 import { densityCommand, densityOf } from './density'
+import { DIAGRAM_HINT, diagramsCommand, diagramsOf } from './diagram'
+import type { DiagramFence } from './diagram'
+import { drawDiagramCard } from './diagram-card'
+import { diagramState, locateDiagrams, pictureOf, retryDiagram, seeColumns, watchReply } from './diagram-job'
 import { drawGroup, groupOf } from './group-card'
 import { MARKS, dropReason, keywordDecorations, readKeywords } from './keywords'
-import { replyLayout } from './long-fence'
+import { diagramParts, replyLayout } from './long-fence'
 import { drawReply, replyColumns } from './reply'
 import { speakCommand, speakOf } from './speak'
 import { speechSentences } from './speech'
@@ -24,35 +28,37 @@ import { metersOf, placementOf, usageCommand } from './usage'
 import { drawMeters } from './usage-line'
 import { DEFAULT_VOICE, voiceCommand, voiceOf } from './voice'
 
-const OMP_HELP = 'usage: /omp usage above|below, /omp density full|balanced|compact|blackbox, /omp speak on|off, or /omp voice <name>'
+const LUCID_HELP = 'usage: /lucid usage above|below, /lucid density full|balanced|compact|blackbox, /lucid speak on|off, /lucid voice <name>, or /lucid diagrams on|off'
 
-const expandedAtom = atom({ plugin: 'omp-blocks', key: 'expanded' } as const, false)
-const durationAtom = atom({ plugin: 'omp-blocks', key: 'duration' } as const, -1)
-const usageAtom = atom({ plugin: 'omp-blocks', key: 'usage' } as const, 'above' as UsagePlacement)
-const densityAtom = atom({ plugin: 'omp-blocks', key: 'density' } as const, 'balanced' as Density)
-const speakAtom = atom({ plugin: 'omp-blocks', key: 'speak' } as const, false)
-const voiceAtom = atom({ plugin: 'omp-blocks', key: 'voice' } as const, DEFAULT_VOICE)
-const openedAtom = atom({ plugin: 'omp-blocks', key: 'opened' } as const, false)
-const ungroupedAtom = atom({ plugin: 'omp-blocks', key: 'ungrouped' } as const, false)
-const metersAtom = atom({ plugin: 'omp-blocks', key: 'meters' } as const, [] as UsageMeter[])
+const expandedAtom = atom({ plugin: 'lucid', key: 'expanded' } as const, false)
+const durationAtom = atom({ plugin: 'lucid', key: 'duration' } as const, -1)
+const usageAtom = atom({ plugin: 'lucid', key: 'usage' } as const, 'above' as UsagePlacement)
+const densityAtom = atom({ plugin: 'lucid', key: 'density' } as const, 'balanced' as Density)
+const speakAtom = atom({ plugin: 'lucid', key: 'speak' } as const, false)
+const voiceAtom = atom({ plugin: 'lucid', key: 'voice' } as const, DEFAULT_VOICE)
+const openedAtom = atom({ plugin: 'lucid', key: 'opened' } as const, false)
+const ungroupedAtom = atom({ plugin: 'lucid', key: 'ungrouped' } as const, false)
+const metersAtom = atom({ plugin: 'lucid', key: 'meters' } as const, [] as UsageMeter[])
 // The blackbox level's record of each turn: the turn running, each turn's blocks, which turn a
 // call belongs to, each call's outcome, and which blocks are open, by their first call.
-const liveTurnAtom = atom({ plugin: 'omp-blocks', key: 'liveTurn' } as const, '')
+const liveTurnAtom = atom({ plugin: 'lucid', key: 'liveTurn' } as const, '')
 // Keyed apart from the one-block record of earlier versions, which a reload can leave in state.
-const turnAtom = atom({ plugin: 'omp-blocks', key: 'turnBlocks' } as const, { blocks: [] } as TurnRecord)
-const ownerAtom = atom({ plugin: 'omp-blocks', key: 'owner' } as const, '')
-const callAtom = atom({ plugin: 'omp-blocks', key: 'call' } as const, { tool: '', input: {}, status: 'running' } as CallRecord)
-const bodyAtom = atom({ plugin: 'omp-blocks', key: 'body' } as const, { input: {} } as CallBody)
-const unfoldedAtom = atom({ plugin: 'omp-blocks', key: 'unfolded' } as const, false)
+const turnAtom = atom({ plugin: 'lucid', key: 'turnBlocks' } as const, { blocks: [] } as TurnRecord)
+const ownerAtom = atom({ plugin: 'lucid', key: 'owner' } as const, '')
+const callAtom = atom({ plugin: 'lucid', key: 'call' } as const, { tool: '', input: {}, status: 'running' } as CallRecord)
+const bodyAtom = atom({ plugin: 'lucid', key: 'body' } as const, { input: {} } as CallBody)
+const unfoldedAtom = atom({ plugin: 'lucid', key: 'unfolded' } as const, false)
 // The reading keywords: marks waiting for their turn, each turn's marks and final reply, the
 // main loop's last reply, each reply's summary, and the reading in progress.
-const pendingMarksAtom = atom({ plugin: 'omp-blocks', key: 'pendingMarks' } as const, [] as Mark[])
-const marksAtom = atom({ plugin: 'omp-blocks', key: 'marks' } as const, [] as Mark[])
-const readingTurnAtom = atom({ plugin: 'omp-blocks', key: 'readingTurn' } as const, '')
-const turnReplyAtom = atom({ plugin: 'omp-blocks', key: 'turnReply' } as const, '')
-const lastReplyAtom = atom({ plugin: 'omp-blocks', key: 'lastReply' } as const, { uuid: '', text: '' } as ReplyRow)
-const tldrAtom = atom({ plugin: 'omp-blocks', key: 'tldr' } as const, { state: 'none' } as Summary)
-const speechAtom = atom({ plugin: 'omp-blocks', key: 'speech' } as const, 0)
+const pendingMarksAtom = atom({ plugin: 'lucid', key: 'pendingMarks' } as const, [] as Mark[])
+const marksAtom = atom({ plugin: 'lucid', key: 'marks' } as const, [] as Mark[])
+const readingTurnAtom = atom({ plugin: 'lucid', key: 'readingTurn' } as const, '')
+const turnReplyAtom = atom({ plugin: 'lucid', key: 'turnReply' } as const, '')
+const lastReplyAtom = atom({ plugin: 'lucid', key: 'lastReply' } as const, { uuid: '', text: '' } as ReplyRow)
+const tldrAtom = atom({ plugin: 'lucid', key: 'tldr' } as const, { state: 'none' } as Summary)
+const speechAtom = atom({ plugin: 'lucid', key: 'speech' } as const, 0)
+// Whether replies draw their diagram fences, and Claude is asked to write them.
+const diagramsAtom = atom({ plugin: 'lucid', key: 'diagrams' } as const, true)
 
 const member = (requestId: string) => ({ requestId })
 // A later outcome never softens an earlier one: an interruption outranks a failure.
@@ -70,10 +76,12 @@ async function loadSettings($: EngineInterface): Promise<void> {
   const density = densityOf(await $.store.get('density'))
   const speak = speakOf(await $.store.get('speak'))
   const voice = voiceOf(await $.store.get('voice'))
+  const diagrams = diagramsOf(await $.store.get('diagrams'))
   await update($, usageAtom, () => stored)
   await update($, densityAtom, () => density)
   await update($, speakAtom, () => speak)
   await update($, voiceAtom, () => voice)
+  await update($, diagramsAtom, () => diagrams)
   await refreshMeters($)
 }
 
@@ -211,15 +219,49 @@ async function drawTurnBlock(
   }, cwd)
 }
 
-// A terminal reply as this mod draws it before any summary: its tables wrap and its long
-// fences split into pieces skins draws; any other reply keeps the drawing beneath.
+// A diagram fence's card. A terminal's columns are the budget of the next spec.
+async function drawDiagram($: EngineInterface, e: RenderInput<'AssistantMessage'>, fence: DiagramFence): Promise<RenderElement> {
+  const ui = $.ui.resolve(e)
+  const columns = e.viewport?.columns ?? 100
+  if (e.surface === 'terminal') seeColumns(columns)
+  const diagram = await diagramState($, fence)
+  const picture = diagram?.status === 'ready' ? await pictureOf($, e.surface, diagram, columns) : undefined
+  return drawDiagramCard(ui, fence.id, diagram, picture, () => retryDiagram($, fence))
+}
+
+// A terminal reply as this mod draws it before any summary: its tables wrap, its long
+// fences split into pieces skins draws, and its diagram fences draw as cards; any other
+// reply keeps the drawing beneath.
 async function drawUsual($: EngineInterface, e: RenderInput<'AssistantMessage', 'terminal'>, beneath: () => Promise<RenderElement>): Promise<RenderElement> {
-  const segments = replyLayout(e.props.text)
+  const segments = replyLayout(e.props.text, await read($, diagramsAtom))
   if (segments === null) return beneath()
   const columns = replyColumns(e.viewport?.columns ?? 100)
   const drawn: (RenderElement | undefined)[] = []
-  for (const segment of segments) drawn.push(segment.kind === 'text' ? await skinsMarkdown($, segment.text, columns) : undefined)
+  for (const segment of segments) {
+    drawn.push(segment.kind === 'text'
+      ? await skinsMarkdown($, segment.text, columns)
+      : segment.kind === 'diagram' ? await drawDiagram($, e, segment) : undefined)
+  }
   return drawReply($.ui.resolve(e), segments, columns, drawn)
+}
+
+// Another surface's reply keeps its own drawing, but for its diagram fences: the text around
+// each draws beneath, in parts, and the fence draws as a card between them.
+async function drawElsewhere($: EngineInterface, e: RenderInput<'AssistantMessage'>, next: (e: RenderInput<'AssistantMessage'>) => Promise<RenderElement>): Promise<RenderElement> {
+  const parts = (await read($, diagramsAtom)) ? diagramParts(e.props.text) : null
+  if (parts === null) return next(e)
+  const { Box } = $.ui.resolve(e)
+  const drawn: RenderElement[] = []
+  for (const [i, part] of parts.entries()) {
+    drawn.push(part.kind === 'diagram'
+      ? await drawDiagram($, e, part)
+      : await next({ ...e, props: { ...e.props, text: part.text, isFirstOfReply: e.props.isFirstOfReply && i === 0 } }))
+  }
+  return (
+    <Box flexDirection="column" width="100%">
+      {drawn.map((part, i) => <Box key={`part-${i}`} flexDirection="column" width="100%">{part}</Box>)}
+    </Box>
+  )
 }
 
 const joined = (a: readonly Mark[], b: readonly Mark[]) => MARKS.filter(mark => a.includes(mark) || b.includes(mark))
@@ -290,7 +332,7 @@ const counting = async ($: EngineInterface): Promise<readonly Mark[]> =>
   (await read($, speakAtom)) ? MARKS : ['tldr']
 
 const detach = ($: EngineInterface, work: Promise<void>) => {
-  void work.catch(error => $.ui.log(`omp-blocks reading: ${error instanceof Error ? error.message : String(error)}`, { to: 'debug' }))
+  void work.catch(error => $.ui.log(`lucid reading: ${error instanceof Error ? error.message : String(error)}`, { to: 'debug' }))
 }
 
 // A main-loop turn takes the marks of the prompt that started it.
@@ -335,11 +377,12 @@ async function finishTurn($: EngineInterface, turnId: string, reason: string, an
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
-      name: 'omp',
-      description: 'omp-blocks settings: /omp usage above|below, /omp density full|balanced|compact|blackbox, /omp speak on|off, /omp voice <name>',
-      argumentHint: 'usage above|below | density full|balanced|compact|blackbox | speak on|off | voice <name>',
+      name: 'lucid',
+      description: 'lucid settings: /lucid usage above|below, /lucid density full|balanced|compact|blackbox, /lucid speak on|off, /lucid voice <name>, /lucid diagrams on|off',
+      argumentHint: 'usage above|below | density full|balanced|compact|blackbox | speak on|off | voice <name> | diagrams on|off',
     })
     await loadSettings($)
+    await locateDiagrams($)
     return next(e)
   })
 
@@ -349,7 +392,7 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('command.run', { command: 'omp' }, async ($, e) => {
+  on('command.run', { command: 'lucid' }, async ($, e) => {
     const setting = e.args.trim().toLowerCase().split(/\s+/)[0]
     if (setting === 'density') {
       const result = densityCommand(e.args, await read($, densityAtom))
@@ -378,7 +421,16 @@ export const register: Register = on => {
       }
       return { text: result.text }
     }
-    if (setting !== 'usage') return { text: OMP_HELP }
+    if (setting === 'diagrams') {
+      const result = diagramsCommand(e.args, await read($, diagramsAtom))
+      if (result.diagrams !== undefined) {
+        const diagrams = result.diagrams
+        await $.store.set('diagrams', diagrams ? 'on' : 'off')
+        await update($, diagramsAtom, () => diagrams)
+      }
+      return { text: result.text }
+    }
+    if (setting !== 'usage') return { text: LUCID_HELP }
     const result = usageCommand(e.args, await read($, usageAtom))
     if (result.placement !== undefined) {
       const placement = result.placement
@@ -430,9 +482,19 @@ export const register: Register = on => {
     if (e.agentId === undefined && (e.door === 'response' || e.door === 'tool-result')) {
       const turnId = await read($, liveTurnAtom)
       if (turnId !== '') await recordRow($, turnId, e.door, e.message.content)
-      if (e.door === 'response') await recordReply($, e.uuid, e.message.content)
+      if (e.door === 'response') {
+        await recordReply($, e.uuid, e.message.content)
+        if (await read($, diagramsAtom)) watchReply($, textOf(e.message.content))
+      }
     }
     return stored
+  })
+
+  // While diagrams are on, a terminal session's system prompt asks Claude to draw them.
+  on('prompt.compose', async ($, e, next) => {
+    const composed = await next(e)
+    if (!e.surfaces.includes('terminal') || e.traits.includes('print') || e.traits.includes('bare') || !(await read($, diagramsAtom))) return composed
+    return { sections: [...composed.sections, { id: 'lucid:diagrams', text: DIAGRAM_HINT, scope: 'session' as const }] }
   })
 
   // A recorded call's result, as its own row would draw it; the result itself passes unchanged.
@@ -473,10 +535,11 @@ export const register: Register = on => {
     )
   })
 
-  // A terminal reply: its tables wrap and its long fences draw in colour, and a reply a
-  // `tldr` marked takes its summary beneath.
+  // A terminal reply: its tables wrap, its long fences draw in colour, its diagram fences
+  // draw as diagrams, and a reply a `tldr` marked takes its summary beneath. Elsewhere only
+  // the diagram fences change.
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
-    if (e.surface !== 'terminal') return next(e)
+    if (e.surface !== 'terminal') return drawElsewhere($, e, next)
     const summary = await read($, memberOf(tldrAtom, e))
     if (summary.state === 'none') return drawUsual($, e, () => next(e))
     const ui = $.ui.resolve(e)

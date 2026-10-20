@@ -9,15 +9,15 @@ const answered = (text: string): ModelCompleteResult => ({ isAnswered: true, tex
 const REPLY = 'The cache now expires after an hour. The tests pass. Should the old keys be deleted?'
 const SUMMARY = 'The cache expires after an hour and the tests pass.\nShould the old keys be deleted?'
 
-// What `/omp <args>` typed at the prompt raises.
-const omp = (args: string) => ({
-  command: 'omp', args, origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 100 },
+// What `/lucid <args>` typed at the prompt raises.
+const lucid = (args: string) => ({
+  command: 'lucid', args, origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 100 },
 })
 
 // What the model and the synthesizer answer: a value, or a refusal, which rejects the call.
 type Answer<T> = T | { deny: string }
 type Options = {
-  // false leaves `/omp speak` at its default, off; otherwise each test starts with speech on.
+  // false leaves `/lucid speak` at its default, off; otherwise each test starts with speech on.
   speech?: boolean
   // The decorations the prompt box holds before the mod adds its own.
   decorations?: PromptDecoration[]
@@ -74,7 +74,7 @@ async function setup($: Engine, on: On, options: Options = {}) {
     return { value: undefined }
   })
   on('ui.render', () => STOCK)
-  if (options.speech !== false) await $.command.run(omp('speak on'))
+  if (options.speech !== false) await $.command.run(lucid('speak on'))
   return { clock, store, received, requests, spoken, voices, logs, toasts }
 }
 
@@ -96,7 +96,7 @@ async function turn($: Engine, turnId: string, prompt: string, reply = REPLY) {
 }
 
 const mountReply = ($: Engine, uuid: string, text = REPLY, surface: 'terminal' | 'desktop' = 'terminal') =>
-  $.ui.mount({ plugin: 'omp-blocks', surface, component: 'AssistantMessage', requestId: uuid, props: { text, isFirstOfReply: true }, viewport: { columns: 80, rows: 40 } })
+  $.ui.mount({ plugin: 'lucid', surface, component: 'AssistantMessage', requestId: uuid, props: { text, isFirstOfReply: true }, viewport: { columns: 80, rows: 40 } })
 
 // A promise and the call that settles it, to hold a call open while the test looks.
 function held<T>() {
@@ -401,13 +401,13 @@ test('with speech off, tldr still counts and a speak beside it stays text', asyn
   expect(spoken).toHaveLength(0)
 })
 
-test('/omp speak off stops later readings, and /omp speak on starts them again', async ($, on) => {
+test('/lucid speak off stops later readings, and /lucid speak on starts them again', async ($, on) => {
   const { clock, spoken } = await setup($, on)
-  expect(await $.command.run(omp('speak off'))).toMatchObject({ text: 'speech: off' })
+  expect(await $.command.run(lucid('speak off'))).toMatchObject({ text: 'speech: off' })
   await turn($, 't1', 'explain the cache. speak')
   await clock.settle()
   expect(spoken).toHaveLength(0)
-  expect(await $.command.run(omp('speak on'))).toMatchObject({ text: 'speech: on' })
+  expect(await $.command.run(lucid('speak on'))).toMatchObject({ text: 'speech: on' })
   await turn($, 't2', 'explain the cache. speak')
   await clock.settle()
   expect(spoken).toHaveLength(3)
@@ -426,9 +426,9 @@ test('each sentence goes to the synthesizer with Samantha, the default voice', a
   expect(voices).toEqual(Array(6).fill('Samantha'))
 })
 
-test('/omp voice sets the voice of every later reading, the summary\'s too', async ($, on) => {
+test('/lucid voice sets the voice of every later reading, the summary\'s too', async ($, on) => {
   const { clock, store, voices } = await setup($, on)
-  expect(await $.command.run(omp('voice Eddy (English (US))'))).toMatchObject({ text: 'speech voice: Eddy (English (US))' })
+  expect(await $.command.run(lucid('voice Eddy (English (US))'))).toMatchObject({ text: 'speech voice: Eddy (English (US))' })
   expect(store.get('voice')).toBe('Eddy (English (US))')
   await turn($, 't1', 'explain the cache. speak')
   await clock.settle()
@@ -450,7 +450,7 @@ test('a voice that is not installed stops the reading and shows a toast', async 
   const { clock, spoken, toasts } = await setup($, on, {
     speak: (_text, _index, voice) => (voice === 'Samantha' ? undefined : { deny: `voice not installed: ${voice}` }),
   })
-  await $.command.run(omp('voice Nobody'))
+  await $.command.run(lucid('voice Nobody'))
   await turn($, 't1', 'explain the cache. speak')
   await clock.settle()
   expect(spoken).toHaveLength(1)

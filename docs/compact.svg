@@ -1,8 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="879.2" height="562.8" viewBox="0 0 628 402" role="img" aria-label="/omp density compact">
-<title>/omp density compact</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="879.2" height="562.8" viewBox="0 0 628 402" role="img" aria-label="/lucid density compact">
+<title>/lucid density compact</title>
 <rect x=".5" y=".5" width="627" height="401" rx="8" fill="#1e1e2e"/>
 <g transform="translate(12 6.5) scale(0.5)" fill="none" stroke="#9399b2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7l5 5-5 5"/><path d="M12 18h7"/></g>
-<text x="27" y="15" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="8.5" fill="#9399b2" letter-spacing=".3">/omp density compact</text>
+<text x="27" y="15" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="8.5" fill="#9399b2" letter-spacing=".3">/lucid density compact</text>
 <line x1="0" y1="23.5" x2="628" y2="23.5" stroke="#ffffff" stroke-opacity=".1"/>
 <g shape-rendering="crispEdges"><rect x="14" y="272" width="78" height="12" fill="#252536"/><rect x="116" y="272" width="54" height="12" fill="#252536"/><rect x="362" y="272" width="54" height="12" fill="#252536"/><rect x="488" y="272" width="72" height="12" fill="#252536"/><rect x="14" y="284" width="36" height="12" fill="#252536"/><rect x="80" y="284" width="48" height="12" fill="#252536"/></g>
 <g fill="none" stroke-linecap="square"><path d="M20 62H608M20 110H608M17 65V107M611 65V107M17 65A3 3 0 0 1 20 62M611 65A3 3 0 0 0 608 62M17 107A3 3 0 0 0 20 110M611 107A3 3 0 0 1 608 110" stroke="#7f849c" stroke-width="1"/><path d="M20 134H608M20 158H608M20 170H608M20 194H608M20 206H608M20 230H608M20 242H608M20 266H608M17 137V155M17 173V191M17 209V227M17 245V263M611 137V155M611 173V191M611 209V227M611 245V263M17 137A3 3 0 0 1 20 134M611 137A3 3 0 0 0 608 134M17 155A3 3 0 0 0 20 158M611 155A3 3 0 0 1 608 158M17 173A3 3 0 0 1 20 170M611 173A3 3 0 0 0 608 170M17 191A3 3 0 0 0 20 194M611 191A3 3 0 0 1 608 194M17 209A3 3 0 0 1 20 206M611 209A3 3 0 0 0 608 206M17 227A3 3 0 0 0 20 230M611 227A3 3 0 0 1 608 230M17 245A3 3 0 0 1 20 242M611 245A3 3 0 0 0 608 242M17 263A3 3 0 0 0 20 266M611 263A3 3 0 0 1 608 266" stroke="#45475a" stroke-width="1"/><path d="M14 338H614M14 362H614" stroke="#888888" stroke-width="1"/></g>

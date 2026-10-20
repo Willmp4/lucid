@@ -19,17 +19,17 @@ test('usageCommand sets, reports, and refuses placements', () => {
   expect(usageCommand('usage below', 'above')).toEqual({ placement: 'below', text: 'usage meters: below the prompt' })
   expect(usageCommand('usage ABOVE', 'below')).toEqual({ placement: 'above', text: 'usage meters: above the prompt' })
   expect(usageCommand('usage', 'below')).toEqual({ text: 'usage meters: below the prompt' })
-  expect(usageCommand('usage sideways', 'above')).toEqual({ text: 'usage: /omp usage above|below' })
-  expect(usageCommand('', 'above')).toEqual({ text: 'usage: /omp usage above|below' })
+  expect(usageCommand('usage sideways', 'above')).toEqual({ text: 'usage: /lucid usage above|below' })
+  expect(usageCommand('', 'above')).toEqual({ text: 'usage: /lucid usage above|below' })
 })
 
-// What `/omp <args>` typed at the prompt raises.
-const omp = (args: string) => ({
-  command: 'omp', args, origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 100 },
+// What `/lucid <args>` typed at the prompt raises.
+const lucid = (args: string) => ({
+  command: 'lucid', args, origin: { kind: 'composer' as const }, presentation: { isFullscreen: false, columns: 100 },
 })
 
 const STOCK: RenderElement = { type: 'Text', props: {}, children: ['skins band'] }
-const BAND = { plugin: 'omp-blocks', surface: 'terminal', component: 'AbovePrompt', viewport: { columns: 100, rows: 40 } } as const
+const BAND = { plugin: 'lucid', surface: 'terminal', component: 'AbovePrompt', viewport: { columns: 100, rows: 40 } } as const
 const bandProps = (hasSurvey: boolean) => ({
   hasSurvey, isWorking: false, maxRows: 10, bodyColumns: 95, scroll: { offset: 0, bodyRows: 9 }, view: {},
 })
@@ -51,7 +51,7 @@ test('the band above the prompt stays by default and hides once the meters move 
   expect(await ui.find({ type: 'Text', text: 'skins band' })).toBeDefined()
   await ui.unmount()
 
-  await $.command.run(omp('usage below'))
+  await $.command.run(lucid('usage below'))
   ui = await $.ui.mount({ ...BAND, requestId: 'band2', props: bandProps(false) })
   expect(await ui.find({ type: 'Text', text: 'skins band' })).toBeUndefined()
   await ui.unmount()
@@ -60,7 +60,7 @@ test('the band above the prompt stays by default and hides once the meters move 
   expect(await ui.find({ type: 'Text', text: 'skins band' })).toBeDefined()
   await ui.unmount()
 
-  await $.command.run(omp('usage above'))
+  await $.command.run(lucid('usage above'))
   ui = await $.ui.mount({ ...BAND, requestId: 'band4', props: bandProps(false) })
   expect(await ui.find({ type: 'Text', text: 'skins band' })).toBeDefined()
   await ui.unmount()
@@ -68,16 +68,16 @@ test('the band above the prompt stays by default and hides once the meters move 
 
 test('the placement persists in the store', async ($, on) => {
   const store = setup(on)
-  await $.command.run(omp('usage below'))
+  await $.command.run(lucid('usage below'))
   expect(store.get('usage')).toBe('below')
 })
 
-const HINT = { plugin: 'omp-blocks', surface: 'terminal', component: 'PromptHint', viewport: { columns: 100, rows: 40 } } as const
+const HINT = { plugin: 'lucid', surface: 'terminal', component: 'PromptHint', viewport: { columns: 100, rows: 40 } } as const
 const hintProps = { isDraft: false, isWorking: false, hint: '? for shortcuts' }
 
 test('below the prompt, the meters draw above the hint line, which stays', async ($, on) => {
   setup(on)
-  await $.command.run(omp('usage below'))
+  await $.command.run(lucid('usage below'))
   const ui = await $.ui.mount({ ...HINT, requestId: 'hint1', props: hintProps })
   expect(await ui.find({ type: 'Text', text: /12% context.*15% 5h.*5% 7d/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: 'skins band' })).toBeDefined()

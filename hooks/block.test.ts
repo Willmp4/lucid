@@ -6,7 +6,7 @@ import { COLORS } from './text-style'
 
 const STOCK: RenderElement = { type: 'Text', props: {}, children: ['stock row'] }
 
-const SITE = { plugin: 'omp-blocks', viewport: { columns: 100, rows: 30 } } as const
+const SITE = { plugin: 'lucid', viewport: { columns: 100, rows: 30 } } as const
 
 const call = (tool: string, input: unknown, state: object = {}) => ({
   tool_use_id: 'tu1',

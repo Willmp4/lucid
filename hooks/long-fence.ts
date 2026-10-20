@@ -1,10 +1,12 @@
+import { diagramOf } from './diagram'
+import type { DiagramFence } from './diagram'
 import { FENCE, splitReply } from './reply-table'
 import type { Segment } from './reply-table'
 
 // A fenced code block too long for skins, split into pieces skins draws in colour. skins
 // draws a reply only when each of its text runs and fences is at most 9,000 characters;
-// one longer block hands the whole reply back to Claude Code's plain drawing. Pure
-// functions: the drawing lives in reply.tsx.
+// one longer block hands the whole reply back to Claude Code's plain drawing. A diagram
+// fence leaves the text as a part of its own. Pure functions: the drawing lives in reply.tsx.
 
 // skins' cap on a block it draws (`MAX_MARKDOWN` in its hooks/reply.ts).
 export const MAX_MARKDOWN = 9000
@@ -15,9 +17,12 @@ const NODES_PER_CHARACTER = 0.3
 const TREE_NODES = 20000
 
 type Block = { kind: 'prose'; lines: string[] } | { kind: 'fence'; open: string; body: string[]; close: string }
+// What this mod draws of a reply, in order: text, tables, and diagrams.
+export type Part = Segment | DiagramFence
 
 const rawOf = (block: Block) => (block.kind === 'prose' ? block.lines : [block.open, ...block.body, block.close]).join('\n')
 const isLong = (block: Block) => block.kind === 'fence' && rawOf(block).length > MAX_MARKDOWN
+const diagramIn = (block: Block) => (block.kind === 'fence' ? diagramOf(block.open, block.body) : null)
 
 // Text as runs of prose and closed fences, read as the table splitter reads fences. A fence
 // still streaming, with no closing marker yet, stays prose, as skins keeps it.
@@ -86,16 +91,20 @@ export function piecesOf(open: string, body: readonly string[], close: string, c
 // Whether the reply's drawing stays under 80 % of the host's node limit.
 export const fitsTree = (text: string) => text.length * NODES_PER_CHARACTER <= TREE_NODES * 0.8
 
-// What this mod draws of a reply: its text, tables, and the pieces of each long fence, in
-// order. Null keeps the drawing beneath: a reply with neither a table nor a long fence, and
-// a reply with a long fence whose prose outside the fences outgrows the cap or whose tree
-// would outgrow the host's.
-export function replyLayout(text: string): Segment[] | null {
+// The diagram fences of a reply, in order.
+export const diagramsIn = (text: string): DiagramFence[] => blocksOf(text).flatMap(block => diagramIn(block) ?? [])
+
+// What this mod draws of a reply: its text, tables, the pieces of each long fence, and, while
+// `diagrams` holds, each diagram fence, in order. Null keeps the drawing beneath: a reply with
+// none of those, and a reply with a long fence or a diagram whose prose outside the fences
+// outgrows the cap or whose tree would outgrow the host's.
+export function replyLayout(text: string, diagrams = false): Part[] | null {
   const segments = splitReply(text)
-  const out: Segment[] = []
+  const out: Part[] = []
   let tables = false
-  let long = false
+  let cut = false
   let overflow = false
+  const cuts = (block: Block) => isLong(block) || (diagrams && diagramIn(block) !== null)
   for (const segment of segments) {
     if (segment.kind === 'table') {
       tables = true
@@ -104,18 +113,22 @@ export function replyLayout(text: string): Segment[] | null {
     }
     const blocks = blocksOf(segment.text)
     overflow ||= blocks.some(block => block.kind === 'prose' && rawOf(block).length > MAX_MARKDOWN)
-    if (!blocks.some(isLong)) {
+    if (!blocks.some(cuts)) {
       out.push(segment)
       continue
     }
-    long = true
+    cut = true
     let held: string[] = []
     const flush = () => {
       if (held.join('').trim() !== '') out.push({ kind: 'text', text: held.join('\n') })
       held = []
     }
     for (const block of blocks) {
-      if (block.kind === 'fence' && isLong(block)) {
+      const diagram = diagrams ? diagramIn(block) : null
+      if (diagram !== null) {
+        flush()
+        out.push(diagram)
+      } else if (block.kind === 'fence' && isLong(block)) {
         flush()
         const pieces = piecesOf(block.open, block.body, block.close)
         // An opening line that fills a piece on its own leaves no room to split.
@@ -127,6 +140,30 @@ export function replyLayout(text: string): Segment[] | null {
     }
     flush()
   }
-  if (!long) return tables ? out : null
+  if (!cut) return tables ? out : null
   return overflow || !fitsTree(text) ? null : out
+}
+
+// A reply cut at its diagram fences alone, for a surface that draws its own markdown; null
+// where it holds none.
+export function diagramParts(text: string): (DiagramFence | { kind: 'text'; text: string })[] | null {
+  const blocks = blocksOf(text)
+  if (!blocks.some(block => diagramIn(block) !== null)) return null
+  const out: (DiagramFence | { kind: 'text'; text: string })[] = []
+  let held: string[] = []
+  const flush = () => {
+    if (held.join('').trim() !== '') out.push({ kind: 'text', text: held.join('\n') })
+    held = []
+  }
+  for (const block of blocks) {
+    const diagram = diagramIn(block)
+    if (diagram === null) {
+      held.push(...rawOf(block).split('\n'))
+      continue
+    }
+    flush()
+    out.push(diagram)
+  }
+  flush()
+  return out
 }

@@ -590,15 +590,15 @@ const round = (value: number) => Math.round(value * 100) / 100
 
 // Titles for the pictures the README shows, by screen name.
 export const TITLES: Record<string, string> = {
-  balanced: '/omp density balanced',
-  compact: '/omp density compact',
-  full: '/omp density full',
-  'blackbox-folded': '/omp density blackbox · folded',
-  'blackbox-open': '/omp density blackbox · open',
+  balanced: '/lucid density balanced',
+  compact: '/lucid density compact',
+  full: '/lucid density full',
+  'blackbox-folded': '/lucid density blackbox · folded',
+  'blackbox-open': '/lucid density blackbox · open',
   tldr: 'tldr · a reply with its summary beneath',
   'reply-table': 'a reply table wider than the pane',
   'long-code': 'a reply code block past 9,000 characters',
-  'usage-below': '/omp usage below',
+  'usage-below': '/lucid usage below',
 }
 
 const USAGE = 'usage: bun scripts/screenshot-svg.ts <screen.ansi> <picture.svg> [title]\n' +

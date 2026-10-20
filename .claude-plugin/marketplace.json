@@ -1,7 +1,7 @@
 {
-  "name": "omp-blocks",
-  "description": "OMP-style tool cards for the Claude Code terminal",
+  "name": "lucid",
+  "description": "Tool cards, reply tables, and diagrams for the Claude Code terminal",
   "allowCrossMarketplaceDependenciesOn": ["hellosverre-mods"],
   "owner": { "name": "Will Goudie" },
-  "plugins": [{ "name": "omp-blocks", "source": "./" }]
+  "plugins": [{ "name": "lucid", "source": "./" }]
 }

@@ -72,7 +72,7 @@ test('a run is named by its program and up to two plain words, a path ending it'
   expect(runName(['git', 'init'])).toBe('git init')
   expect(runName(['python3', 'scripts/gen.py', '--all'])).toBe('python3 gen.py')
   expect(runName(['npx', 'tsc', '--noEmit', '-p', '.'])).toBe('npx tsc')
-  expect(runName(['git', '-C', '~/projects/omp-blocks', 'worktree', 'add', '../wt', 'main'])).toBe('git worktree add')
+  expect(runName(['git', '-C', '~/projects/lucid-blocks', 'worktree', 'add', '../wt', 'main'])).toBe('git worktree add')
   expect(runName(['./observe', '--marlin', '-d'])).toBe('observe')
 })
 

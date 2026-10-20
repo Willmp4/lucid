@@ -4,7 +4,7 @@ import type { Engine } from 'claude-code/testing'
 import { COLORS } from './text-style'
 
 const STOCK: RenderElement = { type: 'Text', props: {}, children: ['native rendering'] }
-const SITE = { plugin: 'omp-blocks', surface: 'terminal', component: 'ToolUse', viewport: { columns: 100, rows: 40 } } as const
+const SITE = { plugin: 'lucid', surface: 'terminal', component: 'ToolUse', viewport: { columns: 100, rows: 40 } } as const
 const props = (tool: string, input: unknown, output: unknown, extra: object = {}) => ({
   tool_use_id: 'card1', tool, input, output, isRunning: false, isErrored: false, isInterrupted: false, ...extra,
 })
@@ -18,7 +18,7 @@ async function setup($: Engine, on: On) {
   })
   on('session.cwd', () => ({ value: '/work' }))
   on('ui.render', () => STOCK)
-  await $.command.run({ command: 'omp', args: 'density full', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+  await $.command.run({ command: 'lucid', args: 'density full', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
 }
 
 test('Bash shows its command and keeps stderr visible beyond a long stdout preview', async ($, on) => {

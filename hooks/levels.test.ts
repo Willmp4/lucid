@@ -5,7 +5,7 @@ import type { Density } from '../types'
 import { blockOf } from './block'
 import { COLORS } from './text-style'
 
-const SITE = { plugin: 'omp-blocks', surface: 'terminal', viewport: { columns: 100, rows: 40 } } as const
+const SITE = { plugin: 'lucid', surface: 'terminal', viewport: { columns: 100, rows: 40 } } as const
 const call = (id: string | undefined, tool: string, input: unknown, output: unknown, extra: object = {}) => ({
   tool_use_id: id, tool, input, output, isRunning: false, isErrored: false, isInterrupted: false, ...extra,
 })
@@ -42,7 +42,7 @@ async function setup($: Engine, on: On, density?: Density) {
     type: 'Text', props: {}, children: [e.component === 'ToolGroup' && e.props.isExpanded ? 'expanded group' : 'native rendering'],
   }))
   if (density !== undefined) {
-    await $.command.run({ command: 'omp', args: `density ${density}`, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+    await $.command.run({ command: 'lucid', args: `density ${density}`, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
   }
 }
 
@@ -347,7 +347,7 @@ test('compact merged groups open to their per-call rows', async ($, on) => {
 test('failed and interrupted cards open in full with a red border at every level', async ($, on) => {
   await setup($, on)
   for (const density of ['full', 'balanced', 'compact'] as const) {
-    await $.command.run({ command: 'omp', args: `density ${density}`, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+    await $.command.run({ command: 'lucid', args: `density ${density}`, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
     const failed = await mountUse($, bashOf(`fail-${density}`, lines(35, 'failure'), { isErrored: true }))
     expect(await failed.find({ type: 'Text', text: exact('failure 35') })).toBeDefined()
     expect(await failed.find({ type: 'Button' })).toBeUndefined()
@@ -410,7 +410,7 @@ test('balanced and compact cap Edit and Write previews at 12 rows', async ($, on
 test('a separate result hides only where the card can show it, at every level', async ($, on) => {
   await setup($, on)
   for (const density of ['full', 'balanced', 'compact'] as const) {
-    await $.command.run({ command: 'omp', args: `density ${density}`, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
+    await $.command.run({ command: 'lucid', args: `density ${density}`, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })
     const text = readOf(`result-${density}`, '/work/a.ts')
     const shown = await $.ui.mount({ ...SITE, component: 'ToolResult', requestId: `result-${density}`, props: {
       tool_use_id: `result-${density}`, tool: 'Read', output: text.output, isErrored: false,

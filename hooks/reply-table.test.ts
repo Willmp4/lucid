@@ -92,7 +92,7 @@ test('tableLines separates body rows with a rule whether or not a row wraps', ()
 })
 
 const STOCK: RenderElement = { type: 'Text', props: {}, children: ['native rendering'] }
-const REPLY = { plugin: 'omp-blocks', component: 'AssistantMessage', viewport: { columns: 60, rows: 40 } } as const
+const REPLY = { plugin: 'lucid', component: 'AssistantMessage', viewport: { columns: 60, rows: 40 } } as const
 const setup = (on: On) => on('ui.render', () => STOCK)
 
 test('a terminal reply with a table draws the whole cell text', async ($, on) => {

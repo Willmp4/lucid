@@ -1,9 +1,10 @@
-# omp-blocks design
+# lucid design
 
 A Claude Code mod that draws Edit, Write, Bash, Read, Grep, and Glob calls
 as bordered cards in the style of the oh-my-pi (OMP) harness. The skins mod
 keeps drawing unsupported tools and payloads. Two prompt keywords fold a
-reply to a short summary or read it aloud.
+reply to a short summary or read it aloud. An `excalidraw` fence in a reply
+draws as an Excalidraw diagram, drawn in the background.
 
 ## Goal
 
@@ -12,9 +13,10 @@ colors. Edit and Write show line-numbered diffs. Shell commands, reads,
 and searches show useful previews with controls to expand long output.
 A card's body shows what the user acts on, at a density level the user
 sets. The mod changes presentation only: tool inputs, results,
-permissions, and the content Claude receives stay unchanged. The one
-exception is a reading keyword, which the mod removes from the prompt
-before Claude receives it.
+permissions, and the content Claude receives stay unchanged. Two
+exceptions: a reading keyword, which the mod removes from the prompt
+before Claude receives it, and the system prompt's section that asks
+Claude for diagrams while diagrams are on.
 
 ## Scope
 
@@ -23,33 +25,40 @@ In scope:
 - The `ToolUse` and `ToolResult` rows of Edit, Write, Bash, Read, Grep, and Glob
 - `ToolGroup` rows that hold supported shell, read, and search calls: one
   merged card or the group forced open
-- The card density, set by `/omp density`
+- The card density, set by `/lucid density`
 - At the `blackbox` level, each run of a main-loop turn's calls, drawn as one
   block that Claude's text ends
-- Terminal `AssistantMessage` rows that hold a markdown table, or a fenced
-  code block over skins' 9,000-character cap
-- The usage meters' placement: `AbovePrompt` and `PromptHint`, set by `/omp usage`
+- Terminal `AssistantMessage` rows that hold a markdown table, a fenced
+  code block over skins' 9,000-character cap, or a diagram fence
+- Diagrams: the system prompt's section that asks for them, the background
+  job that draws each diagram fence, its card on every surface, and the
+  setting `/lucid diagrams`
+- The usage meters' placement: `AbovePrompt` and `PromptHint`, set by `/lucid usage`
 - The reading keywords `tldr` and `speak`: their highlight in the prompt box,
   their removal from the prompt, a reply's TLDR block, and speech through the
   system synthesizer
-- Speech on or off, set by `/omp speak`, and the speech voice, set by
-  `/omp voice`
+- Speech on or off, set by `/lucid speak`, and the speech voice, set by
+  `/lucid voice`
 - The `terminal` surface
 
 Out of scope:
 
 - Unsupported tools and unknown result formats, which pass through to skins
-- The `desktop`, `vscode`, and `mobile` surfaces, which pass through
+- The `desktop`, `vscode`, and `mobile` surfaces, which pass through, but
+  for a reply's diagram fences
 - Image, PDF, notebook, and background-command payloads, which keep native
   UI; at `blackbox`, a background command folds into its block
 - Expanding an Edit/Write diff past its row cap, and full programming-language
   syntax highlighting
 - Reading the skins palette; this mod's colours are fixed
 - A reading mode that persists across turns; each keyword acts on one reply
-- Checking the name `/omp voice` stores against the installed voices; a voice
+- Checking the name `/lucid voice` stores against the installed voices; a voice
   that is not installed fails at the first sentence it reads
 - Drawing a TLDR block under a reply that scrolled away before its
   keyword-only `tldr` arrived; that summary draws as a row of its own instead
+- Editing a diagram in place; its card names the `.excalidraw` file, which
+  Excalidraw opens
+- Removing old diagrams from the cache folder
 
 ## Location and files
 
@@ -59,7 +68,7 @@ installations use Claude Code's plugin cache.
 
 | File | Purpose |
 |---|---|
-| `.claude-plugin/plugin.json` | Manifest: name `omp-blocks`, version, and the skins dependency |
+| `.claude-plugin/plugin.json` | Manifest: name `lucid`, version, and the skins dependency |
 | `hooks/hooks.json` | `{ "modules": ["./register.tsx"] }` |
 | `hooks/register.tsx` | Hook wiring: chooses which rows this mod draws |
 | `hooks/block.tsx` | Pure functions: tool output to header and rows, rows to a tree |
@@ -67,14 +76,14 @@ installations use Claude Code's plugin cache.
 | `hooks/card-model.ts` | Shared card rows, the density view, and terminal text sanitization |
 | `hooks/tool-card.tsx` | Card frame, previews by density level, and expansion controls |
 | `hooks/group-card.tsx` | A run of reads and searches as one card: per-call rows and the merged header |
-| `hooks/density.ts` | `/omp density` parsing and the stored level |
+| `hooks/density.ts` | `/lucid density` parsing and the stored level |
 | `hooks/turn-model.ts` | Pure functions: a turn's rows to blocks of calls, results to outcomes, error lines, and block times, background jobs, a block's title and status line, and lines cut to a width |
 | `hooks/turn-block.tsx` | A block of a turn's calls: the title and status lines, folded failures, and the open call cards |
 | `hooks/shell-command.ts` | Pure functions: a shell command to segments, each segment's program past its wrappers, its class, its name, and the files it names |
 | `hooks/shell-command.test.ts` | The splitter, wrapper stripping, the classifier, run names, and targets |
 | `hooks/blackbox.test.ts` | The `blackbox` level: the setting, the turn model and its blocks, the blocks drawn through session events, background jobs, line widths, and error lines |
 | `hooks/density.test.ts` | Level parsing, the command, persistence, and the reload after `/clear` |
-| `hooks/voice.ts` | `/omp voice` parsing and the stored voice |
+| `hooks/voice.ts` | `/lucid voice` parsing and the stored voice |
 | `hooks/voice.test.ts` | Voice parsing, the command, persistence, and the reload after `/clear`, `/resume`, and `/branch` |
 | `hooks/levels.test.ts` | Each level's cards, merged groups and their fallbacks, compact expansion, failures, and caps |
 | `hooks/text-style.tsx` | Shared palette, conservative lexical spans, and bounded inline rendering |
@@ -84,23 +93,31 @@ installations use Claude Code's plugin cache.
 | `hooks/cards.test.ts` | Rendered content, fallback, and expansion transitions |
 | `hooks/bash-card.test.ts`, `hooks/file-cards.test.ts` | Tool-result boundary tests |
 | `hooks/reply-table.ts` | Pure functions: reply to text and table segments, tables to wrapped box-drawn lines |
-| `hooks/reply.tsx` | Draws a reply's tables and hands its other text to skins |
+| `hooks/reply.tsx` | Draws a reply's tables and diagram cards and hands its other text to skins |
 | `hooks/reply-table.test.ts` | Splitting, cell parsing, widths, wrapping, and the rendered reply |
-| `hooks/long-fence.ts` | Pure functions: a fence over the cap to pieces under it |
+| `hooks/long-fence.ts` | Pure functions: a fence over the cap to pieces under it, a reply's diagram fences, and the reply's parts in order |
 | `hooks/long-fence.test.ts` | Splitting at line boundaries, long lines, language labels, and the rendered reply |
+| `hooks/diagram.ts` | Pure functions: the hint, the spec guide and its request, a fence to its brief and id, the width check, staleness, the picture's size, and `/lucid diagrams` parsing |
+| `hooks/diagram-job.ts` | The background job, what starts it, the cache, and the picture a surface shows |
+| `hooks/diagram-card.tsx` | The diagram's card: progress, the failure and its Retry button, the picture and the scene's path |
+| `hooks/diagram.test.ts` | Fences, the reply's parts, the spec request, width, staleness, the picture's size, and the setting |
+| `hooks/diagrams.test.ts` | Diagrams through session events: the card in place, pixels, cells, and SVG, corrections, Retry, `.flow` briefs, the cache, orphans, the reply-row trigger, the hint, and the setting |
+| `renderer/render.mjs` | `node render.mjs <id>`: a `.flow` spec on stdin to the scene, the SVG, the PNG, and the cells, under the cache folder |
+| `renderer/mkflow.mjs` | The layout generator: a `.flow` spec to an Excalidraw scene |
+| `renderer/vendor/` | roughjs, resvg as WebAssembly, and the PNG's font, committed; its README names each file's source and version |
 | `hooks/keywords.ts` | Pure functions: a prompt to its counting keywords, their letter ranges, and the text left for Claude |
 | `hooks/keywords.test.ts` | Matching, removal, keyword-only prompts, and highlight ranges |
 | `hooks/tldr.ts` | The summary request and its result, cut to the line limit |
 | `hooks/tldr-block.tsx` | The TLDR block under the reply, and the pending and failed lines. Named apart from `tldr.ts`, since one import path cannot name both |
 | `hooks/speech.ts` | Pure functions: reply markdown to sentences for speech |
 | `hooks/speech.test.ts` | Markdown stripping, sentence splits, and the utterance length cap |
-| `hooks/speak.ts` | `/omp speak` parsing and the stored setting |
+| `hooks/speak.ts` | `/lucid speak` parsing and the stored setting |
 | `hooks/speak.test.ts` | Setting parsing, the command, persistence, and the reload after `/clear` |
 | `hooks/reading.test.ts` | The keywords through session events: marks, the TLDR block, the previous reply, speech on and off, speech order, voice, and stopping, and failures |
-| `hooks/usage.ts` | Meter figures and `/omp usage` parsing |
+| `hooks/usage.ts` | Meter figures and `/lucid usage` parsing |
 | `hooks/usage-line.tsx` | The meter line drawn under the prompt |
 | `hooks/usage.test.ts` | Meter text, the command, placement persistence, and both slots |
-| `types/index.d.ts` | Per-call expansion, opening, and splitting; elapsed time; usage placement; density; meter; turn-record; reading state; speech setting; and voice declarations |
+| `types/index.d.ts` | Per-call expansion, opening, and splitting; elapsed time; usage placement; density; meter; turn-record; reading state; speech setting; voice; diagram; and diagram setting declarations |
 
 The mod keeps expansion, compact opening, merged-group splitting, and Bash
 duration in `$.state` families keyed by the render request ID: a tool
@@ -108,17 +125,17 @@ call's, or a merged group's for its compact opening. Each call expands
 independently. At `blackbox` it also keeps each turn's record of its blocks,
 keyed by the turn ID; each call's turn, keyed by its `tool_use_id`; and each
 block's open state, keyed by its first call's `tool_use_id`. The reading
-keywords keep their state as the Reading keywords section describes.
+keywords and the diagrams keep their state as their sections describe.
 
 ## Hook order
 
 The skins mod draws `Edit` and `Write` rows without calling `next`.
-`omp-blocks` declares `"dependencies": ["skins@hellosverre-mods"]` in its
+`lucid` declares `"dependencies": ["skins@hellosverre-mods"]` in its
 manifest so its render hooks run before skins. Claude Code runs a mod before
 its declared dependencies in the user hook chain.
 
-Without that ordering, skins replaces `ToolUse` while `omp-blocks` hides
-`ToolResult`, leaving neither an OMP block nor the native diff. Keep skins
+Without that ordering, skins replaces `ToolUse` while `lucid` hides
+`ToolResult`, leaving neither a lucid block nor the native diff. Keep skins
 installed and enabled. After changing the manifest, run `/reload-plugins`
 in each open Claude Code session; subsequent sessions load the order at startup.
 
@@ -158,13 +175,13 @@ whole payload through **Show all**, and through **Show ▸** first at
 
 ## Card density
 
-`/omp density full|balanced|compact|blackbox` stores the level under the
+`/lucid density full|balanced|compact|blackbox` stores the level under the
 store key `density` and holds it in the `density` atom. `session.start` and
 `classic.SessionStart` with the sources `clear`, `resume`, and `fork` load
 it, as they load the usage placement, the speech setting, and the voice. A
 stored value other than the four levels reads as `balanced`, the default.
-`/omp density` reports the level; a typed value other than the four levels
-shows the usage line and changes nothing. `/omp` with no setting's name shows
+`/lucid density` reports the level; a typed value other than the four levels
+shows the usage line and changes nothing. `/lucid` with no setting's name shows
 one usage line for all four settings: `usage`, `density`, `speak`, and
 `voice`.
 
@@ -533,9 +550,10 @@ button.
 ## Reply tables
 
 skins draws each table row on one line and cuts a cell that outgrows its
-column with `…`. omp-blocks draws a terminal `AssistantMessage` whose text
-holds a table, so the tables wrap. A reply that holds neither a table nor a
-fence over the cap in the Long code blocks section returns `next(e)`.
+column with `…`. lucid draws a terminal `AssistantMessage` whose text
+holds a table, so the tables wrap. A reply that holds no table, no fence over
+the cap in the Long code blocks section, and no diagram fence while diagrams
+are on returns `next(e)`.
 
 - **Detection:** a line with a pipe, followed by a delimiter row whose cells
   match `:?-+:?` and whose cell count equals the header's. Body rows continue
@@ -581,9 +599,10 @@ run's `INTENT.md`, crosses that cap.
   fence pieces. Text and each piece draw through `$.skins.markdown`, and
   tables draw as the Reply tables section describes. Where skins draws
   nothing, or is absent, a segment draws as Claude Code's `Markdown`
-- **Pass-through:** a reply keeps `next(e)` when a text segment outside every
-  fence exceeds 9,000 characters, since Claude Code's `Markdown` takes at most
-  10,000 characters a block. It also keeps `next(e)` when the reply's estimated
+- **Pass-through:** a reply with a long fence or a diagram fence keeps
+  `next(e)` when a text segment outside every fence exceeds 9,000
+  characters, since Claude Code's `Markdown` takes at most 10,000
+  characters a block. It also keeps `next(e)` when the reply's estimated
   tree passes 80 % of the host's tree limit: the host refuses a tree of more
   than 20,000 nodes, strings included, and draws its own; it sets no limit on
   a tree's serialized size. The estimate scales the reply's length by 0.3 nodes
@@ -606,7 +625,7 @@ level read no skins setting.
 Two words in a prompt act on Claude's reply instead of reaching Claude:
 `tldr` adds a short summary under a reply, and `speak` reads a reply aloud.
 Each keyword acts on one reply; nothing carries into the next turn. `speak`
-counts only while `/omp speak on` holds; see [Speech setting](#speech-setting).
+counts only while `/lucid speak on` holds; see [Speech setting](#speech-setting).
 
 ### Matching
 
@@ -746,10 +765,10 @@ after stripping plays nothing.
 
 ### Speech setting
 
-Speech is off until the user turns it on. `/omp speak on` and `/omp speak
+Speech is off until the user turns it on. `/lucid speak on` and `/lucid speak
 off` store `on` or `off` under the store key `speak` and hold the setting in
-the `speak` atom. `/omp speak` reports `speech: on` or `speech: off`; any
-other value, or a word after it, shows `usage: /omp speak on|off` and changes
+the `speak` atom. `/lucid speak` reports `speech: on` or `speech: off`; any
+other value, or a word after it, shows `usage: /lucid speak on|off` and changes
 nothing. `session.start` and `classic.SessionStart` with the sources
 `clear`, `resume`, and `fork` load it, as they load the usage placement, the
 density, and the voice. A stored value other than `on` reads as off.
@@ -760,11 +779,11 @@ marked `speak` while speech was on still reads its reply when it ends.
 
 ### Voice
 
-`/omp voice <name>` stores the voice under the store key `voice` and holds it
+`/lucid voice <name>` stores the voice under the store key `voice` and holds it
 in the `voice` atom. The name is the system voice's exact name, as typed: it
-keeps its letter case and the spaces inside it, so `/omp voice Eddy (English
+keeps its letter case and the spaces inside it, so `/lucid voice Eddy (English
 (US))` stores `Eddy (English (US))`, and only the whitespace at its edges
-drops. `/omp voice` reports the voice. `session.start` and
+drops. `/lucid voice` reports the voice. `session.start` and
 `classic.SessionStart` with the sources `clear`, `resume`, and `fork` load
 it, as they load the usage placement, the density, and the speech setting. A stored value that is
 blank or not a string reads as `Samantha`, the default.
@@ -790,11 +809,179 @@ selected it renders a few milliseconds of silence for each sentence.
 `/clear`, `/resume`, and `/branch` reset `$.state`. After them, a
 keyword-only prompt finds no previous reply until Claude answers again.
 
+## Diagrams
+
+Claude writes a diagram as a fenced code block whose info string is
+`excalidraw` and whose body is a brief in plain language: a title, the
+boxes, the arrows between them with their labels, and any side-by-side
+panels. A background model call turns the brief into a `.flow` spec,
+`renderer/render.mjs` lays the spec out and draws it, and the card that took
+the fence's place redraws with the picture.
+
+### Hint
+
+`prompt.compose` calls `next(e)`, then adds one section last: id
+`lucid:diagrams`, scope `session`, and the text `DIAGRAM_HINT` in
+`hooks/diagram.ts`. It asks Claude to draw a diagram unasked whenever a reply
+explains a design, an architecture, how components or services connect, a
+process of several steps, or a before-and-after change: one diagram a reply,
+in the final answer, since text written between tool calls folds away, and
+none for short answers, code edits, and status updates. It prefers
+`excalidraw` to a mermaid flowchart, sequence, state, or architecture
+diagram, and keeps mermaid for data charts.
+
+The section is added while diagrams are on, to a prompt whose `surfaces`
+include `terminal` and whose `traits` include neither `print` nor `bare`.
+
+### Detection
+
+- **Fence:** a closed fence, read as the Long code blocks section reads
+  fences, whose info string starts with the word `excalidraw`. A fence still
+  streaming, with no closing marker, stays text
+- **Brief:** the fence's body, trimmed. A blank brief leaves the fence as code
+- **Id:** the brief's cyrb53 hash in base 36, so one brief keys one diagram
+  in every session and every reply that repeats it
+
+### Drawing the reply
+
+On the terminal, a reply that holds a diagram fence draws as its parts in
+order, as the Reply tables and Long code blocks sections describe, each
+diagram fence as its card. The pass-through rules of the Long code blocks
+section hold: a reply too large keeps `next(e)`, its diagram fence drawn as
+code.
+
+On `desktop`, `vscode`, and `mobile`, the reply cuts at its diagram fences
+alone. The text between them draws through `next` with that text, the first
+part alone keeping `isFirstOfReply`, and each fence draws as its card.
+
+### Card
+
+A rounded box in the card border colour, `#45475a`. Its first line, in the
+name colour and bold, reads `excalidraw`, or `excalidraw · <title>` once the
+diagram has a title.
+
+| State | Body |
+|---|---|
+| Not drawn | `drawing in the background · queued`, muted |
+| `drawing` | `drawing in the background · <step>`, muted. The step is `writing the spec`, `drawing`, or `fixing the spec (<n> of 2)` |
+| `failed` | `Could not draw it: <reason>` in red, and a **Retry** button, keyed `retry-<id>`, that runs the job again |
+| `ready` | The picture, then the path of the `.excalidraw` scene, muted |
+
+| Surface | Picture |
+|---|---|
+| Terminal that shows pixels, with a PNG drawn | `Image` of the PNG file. Columns: one for each 16 pixels, at most the viewport less 6 and at most 255. Rows: columns × height ÷ width × 0.48, from 1 to 255 |
+| Any other terminal | The cells file's lines, one `Text` each, cut with `truncate-end`, each run in its colour, dim, or bold |
+| Desktop, VS Code, and mobile | `Svg` of the SVG file, at most 131,072 characters, the element's cap |
+| A file that does not read | The SVG file's path, muted |
+
+The terminal shows pixels where `render.mjs --dir` says so: `TERM` is
+`xterm-kitty` or `xterm-ghostty`, or `TERM_PROGRAM` is `ghostty`, and none of
+`HERDR_ENV`, `TMUX`, `ZELLIJ`, and `STY` is set. Anywhere else an `Image`
+draws its alt text alone.
+
+### Job
+
+The job holds a diagram's state in the `diagram` family, keyed by its id:
+
+1. It reads the member and its version, and goes on when the member is
+   absent or an orphan, or, from **Retry**, has failed
+2. It claims the member with `$.state.set` and `ifVersion`, writing `drawing`
+   under this load's mark. A missed claim ends it: another job holds the
+   member
+3. A hit in the cache folder, `<id>.json`, is `ready` at once
+4. The spec is the brief itself when the brief is `.flow` already, with a
+   `panel` line and a `node` line. Otherwise one `$.model.complete` call
+   writes it
+5. `node <plugin root>/renderer/render.mjs <id>` runs with the spec on stdin
+   and a 60-second timeout. The last line of its output is the result
+6. An `{ error }`, or a diagram wider than its room where cells show it,
+   goes back to the model with the problem, at most twice. A brief written as
+   `.flow` goes back never
+7. The member becomes `ready` with the files, and a toast reads
+   `Diagram ready: <title>`. Any error makes it `failed` with the error's
+   message
+
+| Field | Value |
+|---|---|
+| `model` | `sonnet` |
+| `system` | `SPEC_GUIDE` in `hooks/diagram.ts`: the `.flow` grammar, its rules, and an example. The rules keep every edge inside its panel and the diagram narrow: at most three panels, three cells a row, and box width 200 |
+| `prompt` | `Brief:` and the brief. Where cells show the diagram, the room in columns and at most `room ÷ 26` boxes side by side, rounded down. On a correction, the last spec and `The generator refused it:` with the problem |
+| `maxTokens` | 4,000 |
+| `timeoutMs` | 120,000 |
+
+The room is the last terminal reply's viewport columns less 6, at least 40.
+The width problem reads `The diagram is <n> columns wide and the terminal has
+<room>. Put fewer boxes side by side: fewer panels, fewer cells per row, more
+rows.` A diagram still too wide after two corrections draws, its lines cut at
+the card's edge.
+
+### Triggers
+
+A job starts on a zero-delay `$.clock.after`, so the turn never waits on it
+and the dispatch that found it cannot abort it. One job a diagram runs at a
+time, and a later one ends at once on a member already drawn:
+
+- `session.append` on the main loop at the `response` door, while diagrams
+  are on: the fences in the row's text, then, once the row is stored, the
+  fences in the last six stored messages, since a reply row can reach the
+  hook before its text
+- A card that reads a member absent or an orphan
+
+### Orphans
+
+Each load of the hooks module marks the jobs it runs with a random `load`.
+A reload, from `/reload-plugins` or an edit, ends the jobs it ran, and their
+members stay `drawing` under the old mark. A trigger or a card that finds
+such a member starts the job again.
+
+### Renderer and cache
+
+`render.mjs` builds the scene with `mkflow.mjs` and draws three versions of
+it: an SVG with roughjs strokes from Excalidraw's element styles, a PNG of the
+SVG at twice its size through resvg as WebAssembly, and the cells version. It
+writes `<id>.flow`, `.excalidraw`, `.svg`, `.png`, `.cells.json`, and `.json`
+to the cache folder, and prints the `.json`: the files' paths, the PNG's size,
+the cells' width, and the title. A refused spec prints `{ error }` and exits
+1. Where the WebAssembly or the font does not load, the PNG is left out; the
+SVG and cells still serve.
+
+The cache folder is `$XDG_CACHE_HOME/lucid` when that variable is set, else
+`~/Library/Caches/lucid` on macOS and `~/.cache/lucid` elsewhere.
+`render.mjs --dir` prints the folder and whether pixels show, and
+`session.start` asks it once a load. Nothing removes old diagrams.
+
+The renderer needs `node` alone. roughjs, resvg, and the PNG's font,
+JetBrains Mono, are committed under `renderer/vendor/`, since resvg as
+WebAssembly reads no system fonts. Without `node`, a job fails with the
+reason its run gives.
+
+### Setting
+
+`/lucid diagrams on` and `/lucid diagrams off` store `on` or `off` under the
+store key `diagrams` and hold the setting in the `diagrams` atom.
+`/lucid diagrams` reports `diagrams: on` or `diagrams: off`; any other value,
+or a word after it, shows `usage: /lucid diagrams on|off` and changes nothing.
+A stored value other than `off` reads as on, the default. `session.start` and
+`classic.SessionStart` with the sources `clear`, `resume`, and `fork` load it.
+While diagrams are off, the hint is not added, no job starts, and a diagram
+fence draws as the code block it is.
+
+### State
+
+| Atom or family | Key | Holds |
+|---|---|---|
+| `diagram` | diagram id | `drawing` with its step and load, `ready` with its files, or `failed` with its reason |
+| `diagrams` | none | Whether diagrams are on |
+
+The cache folder, whether pixels show, and the last terminal width live in
+the module. `/clear`, `/resume`, and `/branch` reset `$.state`, and a card
+then takes its diagram from the cache.
+
 ## Usage meter placement
 
-`/omp usage above|below` stores the placement under the store key `usage`
+`/lucid usage above|below` stores the placement under the store key `usage`
 and holds it in the `usage` atom; any other value reads as `above`.
-`/omp usage` reports it, and other arguments show the usage line.
+`/lucid usage` reports it, and other arguments show the usage line.
 
 | Placement | `AbovePrompt` | `PromptHint` |
 |---|---|---|
@@ -847,6 +1034,24 @@ one past it, the pieces' language labels and line order, a line longer than
 a piece, a reply that holds both a table and a long fence, a long prose
 segment and an oversized reply that keep `next(e)`, and the desktop surface.
 
+`hooks/diagram.test.ts` covers the id's hash, diagram fences and fences that
+are not, fences still streaming, the reply's parts with diagrams on and off,
+a diagram among tables and long fences, prose over the cap, the parts other
+surfaces draw, `.flow` briefs and fenced specs, the spec request with and
+without the width budget, a correction's prompt, the width problem with and
+without pixels and a PNG, the picture's size, orphans and staleness, and
+`/lucid diagrams` parsing.
+
+`hooks/diagrams.test.ts` drives session events with a stubbed renderer,
+model, and file system. It covers the card in place on the terminal and on
+the desktop, the picture where pixels show, the cells where they do not or
+where no PNG was drawn, the SVG on the desktop, a spec too wide and one
+refused, the failure's reason and **Retry**, a `.flow` brief with no model
+call, a cached diagram with no drawing, an orphan drawn again, the reply-row
+trigger through the stored messages, the hint on each surface and trait, the
+setting turning the hint and the cards off and on, and the setting's reload
+at session start and after `/clear`.
+
 `hooks/keywords.test.ts` covers each keyword in each letter case, `tl;dr`,
 leading and trailing runs with their punctuation, a keyword in the middle of
 a prompt, a keyword inside a longer word, keyword-only prompts, the text left
@@ -863,9 +1068,9 @@ the six-line cut, a summary that fails or times out, an aborted turn, the
 previous reply's `$.ui.log` row, speech order, a prompt that stops a reading
 after its sentence, `tldr speak` with a ready and a failed summary, a
 rejected `speak` call, `speak` with speech off in the prompt box, the prompt,
-and beside `tldr`, `/omp speak off` and `on` between turns, the voice each
+and beside `tldr`, `/lucid speak off` and `on` between turns, the voice each
 `speak` call passes by default, after
-`/omp voice`, and after `/clear`, a voice that is not installed, subagent
+`/lucid voice`, and after `/clear`, a voice that is not installed, subagent
 turns, prompts from other origins, and the desktop surface.
 
 `hooks/speak.test.ts` covers setting parsing, the command's replies, store
@@ -936,7 +1141,17 @@ The reading smoke check runs in the same session:
 2. A keyword-only `tldr` writes a `TLDR · previous reply` row and starts no
    turn
 3. With speech off, the default, `speak` stays unlit and reaches Claude.
-   After `/omp speak on`, `speak` reads the previous reply aloud, and a
+   After `/lucid speak on`, `speak` reads the previous reply aloud, and a
    following prompt stops it after the sentence in progress
 4. A reply that prints a 10,000-character file draws it coloured, as
    consecutive cards, and draws it whole with `/skin fold off`
+
+The diagram smoke check:
+
+1. A copy of `renderer/` in an empty temporary folder, with no
+   `node_modules` above it, draws a `.flow` spec read from stdin
+   (`XDG_CACHE_HOME=<folder> node renderer/render.mjs check < spec.flow`)
+   and writes the PNG, the SVG, and the cells file
+2. In a live session, a question about how two services connect draws a
+   reply whose card reads `drawing in the background`, then shows the
+   diagram. Inside tmux or Herdr the diagram draws in cells
