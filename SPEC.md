@@ -34,6 +34,8 @@ In scope:
   job that draws each diagram fence, its card on every surface, and the
   setting `/lucid diagrams`
 - The usage meters' placement: `AbovePrompt` and `PromptHint`, set by `/lucid usage`
+- The copy control at the end of `PromptHint`, which puts the main loop's
+  latest Bash command on the clipboard on a click or a bound key
 - The reading keywords `tldr` and `speak`: their highlight in the prompt box,
   their removal from the prompt, a reply's TLDR block, and speech through the
   system synthesizer
@@ -117,7 +119,9 @@ installations use Claude Code's plugin cache.
 | `hooks/usage.ts` | Meter figures and `/lucid usage` parsing |
 | `hooks/usage-line.tsx` | The meter line drawn under the prompt |
 | `hooks/usage.test.ts` | Meter text, the command, placement persistence, and both slots |
-| `types/index.d.ts` | Per-call expansion, opening, and splitting; elapsed time; usage placement; density; meter; turn-record; reading state; speech setting; voice; diagram; and diagram setting declarations |
+| `hooks/copy.ts` | The engine action the copy control borrows, and the clipboard write |
+| `hooks/copy.test.ts` | The copy control through session events: its action, the command it copies, its label, and the clipboard fallback |
+| `types/index.d.ts` | Per-call expansion, opening, and splitting; elapsed time; usage placement; density; meter; turn-record; reading state; speech setting; voice; diagram; diagram setting; and copy control declarations |
 
 The mod keeps expansion, compact opening, merged-group splitting, and Bash
 duration in `$.state` families keyed by the render request ID: a tool
@@ -999,6 +1003,33 @@ the previous value, so the line does not redraw.
 so `classic.SessionStart` with those sources reloads the placement and the
 figures.
 
+## Copy control
+
+A mouse selection of a card's command takes the card's border with it, and
+inside a multiplexer the selection can miss the system clipboard. The copy
+control puts the command on the clipboard as Claude sent it.
+
+The `tool.call` hook for Bash writes a main-loop call's `command` to the
+`command` atom before the call runs, and sets the `copied` atom to false. A
+subagent's call, which carries an `agentId`, changes neither. Once `command`
+holds a command, `PromptHint` draws the engine's hint line, then a dim, plain
+Button keyed `lucid-copy` that reads `copy`, or `copied` while `copied` is
+true. At either placement of the meters, the control ends the hint line.
+
+A press runs `pbcopy` with the command on standard input. When `pbcopy`
+cannot start or exits non-zero, the press calls `$.ui.copy` with the press's
+surface. When either write takes, `copied` turns true.
+
+A mod cannot add a keybinding action, so the Button borrows the engine
+action `permission:toggleDebug` through its `action` prop. That action's own
+handler runs only inside a permission prompt, and a mod's Button does not
+fire while a dialog is up, so the two never compete. The user binds a key
+to the action in the `Global` context of `~/.claude/keybindings.json`; the
+README names `meta+j`. A click presses the Button too.
+
+`/clear`, `/resume`, and `/branch` reset `$.state`, so the control stays
+hidden until the next Bash call.
+
 ## Testing
 
 `hooks/block.test.ts` covers:
@@ -1084,6 +1115,14 @@ reload at session start and after `/clear`, `/resume`, and `/branch`.
 `hooks/usage.test.ts` covers the meter line, the command's replies, store
 persistence, the band hidden and restored, a survey keeping the band, the
 meter line above the hint line, and the reload after `/clear`.
+
+`hooks/copy.test.ts` drives Bash calls through `tool.call` with a stubbed
+`pbcopy` and `ui.copy`. It covers the hint line with no command yet, the
+Button's label and borrowed action, the latest command piped exactly, a
+subagent's command left out, the label after a copy and after the next
+command, and the fallback to `$.ui.copy` when `pbcopy` fails and when it is
+missing.
+
 Rendered-text queries use exact matches for individual styles; precedence
 checks permit nested or inherited spans but reject conflicting colours.
 
@@ -1155,3 +1194,12 @@ The diagram smoke check:
 2. In a live session, a question about how two services connect draws a
    reply whose card reads `drawing in the background`, then shows the
    diagram. Inside tmux or Herdr the diagram draws in cells
+
+The copy smoke check runs in Herdr with `meta+j` bound to
+`permission:toggleDebug` in the `Global` context:
+
+1. A Bash call with quotes and a pipe draws `copy` at the end of the hint
+   line
+2. `meta+j` at the prompt turns the control to `copied`, and `pbpaste`
+   prints the command exactly, with no border
+3. A click on `copy` after the next Bash call copies that command

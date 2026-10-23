@@ -4,6 +4,7 @@ import type { EngineInterface, Register, RenderElement, RenderInput } from 'clau
 import type { CallBody, CallRecord, CallStatus, Density, Mark, ReplyRow, Summary, TurnRecord, UsageMeter, UsagePlacement } from '../types'
 import { EDIT_TOOLS, blockOf, drawBlock } from './block'
 import type { CallProps } from './block'
+import { COPY_ACTION, copyText } from './copy'
 import { densityCommand, densityOf } from './density'
 import { DIAGRAM_HINT, diagramsCommand, diagramsOf } from './diagram'
 import type { DiagramFence } from './diagram'
@@ -59,6 +60,9 @@ const tldrAtom = atom({ plugin: 'lucid', key: 'tldr' } as const, { state: 'none'
 const speechAtom = atom({ plugin: 'lucid', key: 'speech' } as const, 0)
 // Whether replies draw their diagram fences, and Claude is asked to write them.
 const diagramsAtom = atom({ plugin: 'lucid', key: 'diagrams' } as const, true)
+// The main loop's latest Bash command, and whether the copy control has copied it.
+const commandAtom = atom({ plugin: 'lucid', key: 'command' } as const, '')
+const copiedAtom = atom({ plugin: 'lucid', key: 'copied' } as const, false)
 
 const member = (requestId: string) => ({ requestId })
 // A later outcome never softens an earlier one: an interruption outranks a failure.
@@ -520,17 +524,26 @@ export const register: Register = on => {
     return <Box />
   })
 
-  // With the meters below the prompt, they take a line above the hint line, which stays.
+  // With the meters below the prompt, they take a line above the hint line, which stays. Once
+  // a Bash command has run, the hint line ends in the copy control.
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
-    const theirs = await next(e)
-    const meters = await read($, metersAtom)
-    if ((await read($, usageAtom)) !== 'below' || meters.length === 0) return theirs
     const ui = $.ui.resolve(e)
-    const { Box } = ui
+    const { Box, Button } = ui
+    const command = await read($, commandAtom)
+    const hint = command === '' ? await next(e) : (
+      <Box flexDirection="row" gap={2}>
+        {await next(e)}
+        <Button key="lucid-copy" label={(await read($, copiedAtom)) ? 'copied' : 'copy'} action={COPY_ACTION} dimColor plain onPress={press => {
+          void copyText($, command, press.surface).then(copied => copied && update($, copiedAtom, () => true))
+        }} />
+      </Box>
+    )
+    const meters = await read($, metersAtom)
+    if ((await read($, usageAtom)) !== 'below' || meters.length === 0) return hint
     return (
       <Box flexDirection="column">
         {drawMeters(ui, meters)}
-        {theirs}
+        {hint}
       </Box>
     )
   })
@@ -583,6 +596,10 @@ export const register: Register = on => {
   })
 
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    if (e.agentId === undefined) {
+      await update($, commandAtom, () => e.command)
+      await update($, copiedAtom, () => false)
+    }
     const start = await $.clock.now()
     try {
       return await next(e)

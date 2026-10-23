@@ -11,6 +11,8 @@ OMP style.
 - **Reply tables:** Markdown tables draw as grids that fit the pane
 - **Diagrams:** Claude draws a design or a flow as a diagram in its reply
 - **`tldr`:** adds a short summary under a reply
+- **Copy:** a key puts the latest shell command on the clipboard, without
+  the card's border
 
 ## Densities
 
@@ -70,6 +72,32 @@ Send `tldr` on its own to summarize the previous reply.
 
 `speak` reads a reply aloud the same way. It's experimental and off by
 default: turn it on with `/lucid speak on`.
+
+## Copy a command
+
+Once Claude runs a shell command, the line under the prompt ends in `copy`.
+Click it, or press its key, to put the latest command on the clipboard
+exactly as Claude ran it. It reads `copied` until the next command.
+
+To give it a key, add this binding to the `Global` context in
+`~/.claude/keybindings.json`:
+
+```json
+{
+  "context": "Global",
+  "bindings": {
+    "meta+j": "permission:toggleDebug"
+  }
+}
+```
+
+`meta+j` is Option+J on macOS; your terminal must send Option as Meta. A mod
+can't add a keybinding action of its own, so the control borrows this one,
+which acts only inside a permission prompt. Any modified key or chord works
+in place of `meta+j`.
+
+On macOS the copy goes through `pbcopy`, which reaches the clipboard from
+inside tmux or Herdr.
 
 ## Settings
 

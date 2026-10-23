@@ -1,7 +1,7 @@
 {
   "name": "lucid",
-  "version": "0.10.0",
-  "description": "Draws file edits, shell commands, reads, and searches as OMP-style bordered tool cards at a chosen density or folds each run of calls into a block that Claude's text ends, wraps reply tables, draws long reply code blocks in colour, draws the Excalidraw diagrams Claude writes in place, adds a summary under a reply on a prompt keyword or reads it aloud once speech is on, and places the usage meters",
+  "version": "0.11.0",
+  "description": "Draws file edits, shell commands, reads, and searches as OMP-style bordered tool cards at a chosen density or folds each run of calls into a block that Claude's text ends, wraps reply tables, draws long reply code blocks in colour, draws the Excalidraw diagrams Claude writes in place, adds a summary under a reply on a prompt keyword or reads it aloud once speech is on, places the usage meters, and copies the latest shell command from a key",
   "homepage": "https://github.com/Willmp4/lucid",
   "repository": "https://github.com/Willmp4/lucid",
   "license": "MIT",

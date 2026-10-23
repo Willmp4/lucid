@@ -81,6 +81,8 @@ declare module 'claude-code' {
       voice: string
       diagram: StateFamily<Diagram>
       diagrams: boolean
+      command: string
+      copied: boolean
     }
   }
 }
