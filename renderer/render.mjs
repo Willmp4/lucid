@@ -11,6 +11,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { buildScene, parseFlow } from './mkflow.mjs'
+import { canShowPixels } from './pixels.mjs'
 import rough from './vendor/rough.mjs'
 import { Resvg, initWasm } from './vendor/resvg.mjs'
 
@@ -439,13 +440,6 @@ async function main() {
     process.stdout.write(`${JSON.stringify({ error: String(error?.message ?? error) })}\n`)
     process.exitCode = 1
   }
-}
-
-// Pixels reach the screen only from kitty or Ghostty with no multiplexer in between; the
-// engine draws an Image's alt anywhere else.
-function canShowPixels(env) {
-  const isMultiplexed = ['HERDR_ENV', 'TMUX', 'ZELLIJ', 'STY'].some(name => env[name])
-  return !isMultiplexed && (env.TERM === 'xterm-kitty' || env.TERM === 'xterm-ghostty' || env.TERM_PROGRAM === 'ghostty')
 }
 
 if (id === '--dir') {

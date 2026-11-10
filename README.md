@@ -51,8 +51,8 @@ brief into a hand-drawn Excalidraw diagram in the background, and the diagram
 draws in place of the block. Each card names its `.excalidraw` file, which
 opens in Excalidraw.
 
-Most terminals, and a terminal inside a multiplexer such as tmux, draw the
-diagram in text.
+Most terminals, and a terminal inside a multiplexer such as tmux, herdr, or
+the Herdr desktop app, draw the diagram in text.
 
 ![A one-line reply over its diagram card: the header excalidraw · How a diagram reaches a reply, two dashed panels of boxes and arrows drawn in text, and the path of the .excalidraw file](docs/diagram.svg)
 

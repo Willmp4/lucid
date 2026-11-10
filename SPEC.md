@@ -105,6 +105,8 @@ installations use Claude Code's plugin cache.
 | `hooks/diagram.test.ts` | Fences, the reply's parts, the spec request, width, staleness, the picture's size, and the setting |
 | `hooks/diagrams.test.ts` | Diagrams through session events: the card in place, pixels, cells, and SVG, corrections, Retry, `.flow` briefs, the cache, orphans, the reply-row trigger, the hint, and the setting |
 | `renderer/render.mjs` | `node render.mjs <id>`: a `.flow` spec on stdin to the scene, the SVG, the PNG, and the cells, under the cache folder |
+| `renderer/pixels.mjs` | Whether the terminal shows pixels, from its environment variables |
+| `scripts/render-pixels.test.ts` | The pixel check in each terminal and multiplexer, and in the Herdr desktop app |
 | `renderer/mkflow.mjs` | The layout generator: a `.flow` spec to an Excalidraw scene |
 | `renderer/vendor/` | roughjs, resvg as WebAssembly, and the PNG's font, committed; its README names each file's source and version |
 | `hooks/keywords.ts` | Pure functions: a prompt to its counting keywords, their letter ranges, and the text left for Claude |
@@ -880,8 +882,11 @@ diagram has a title.
 
 The terminal shows pixels where `render.mjs --dir` says so: `TERM` is
 `xterm-kitty` or `xterm-ghostty`, or `TERM_PROGRAM` is `ghostty`, and none of
-`HERDR_ENV`, `TMUX`, `ZELLIJ`, and `STY` is set. Anywhere else an `Image`
-draws its alt text alone.
+`HERDR_ENV`, `HC_TERMINAL_ID`, `TMUX`, `ZELLIJ`, and `STY` is set. Anywhere
+else an `Image` draws its alt text alone. The Herdr desktop app sets
+`TERM_PROGRAM` to `ghostty` and `HC_TERMINAL_ID` in place of `HERDR_ENV`,
+because herdr-core runs its terminals, so it draws the cells.
+`renderer/pixels.mjs` holds the check.
 
 ### Job
 
@@ -1072,6 +1077,9 @@ surfaces draw, `.flow` briefs and fenced specs, the spec request with and
 without the width budget, a correction's prompt, the width problem with and
 without pixels and a PNG, the picture's size, orphans and staleness, and
 `/lucid diagrams` parsing.
+
+`scripts/render-pixels.test.ts` covers the pixel check: kitty and Ghostty
+alone, other terminals, each multiplexer, and the Herdr desktop app.
 
 `hooks/diagrams.test.ts` drives session events with a stubbed renderer,
 model, and file system. It covers the card in place on the terminal and on
