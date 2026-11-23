@@ -93,6 +93,15 @@ test('elsewhere the text around a fence draws beneath, in parts, with the card b
   await ui.unmount()
 })
 
+test('elsewhere the card draws between the engine’s own parts of the reply', async ($, on) => {
+  on('ui.render', { component: 'AssistantMessage' }, () => ({ type: 'engine', ref: 0 }))
+  await setup($, on)
+  const ui = await mountReply($, 'desktop')
+  expect(await ui.findAll({ type: 'engine' })).toHaveLength(2)
+  expect((await ui.find({ type: 'Text', text: /drawing in the background/ }))?.text).toContain('queued')
+  await ui.unmount()
+})
+
 // The job.
 
 test('the background job turns the brief into a picture where the terminal shows pixels', async ($, on) => {

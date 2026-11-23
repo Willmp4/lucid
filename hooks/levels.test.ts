@@ -240,6 +240,16 @@ test('Show all switches a merged group to full cards, and Collapse merges it aga
   await group.unmount()
 })
 
+test('a group split by Show all draws Collapse beside the engine’s own rows', async ($, on) => {
+  on('ui.render', { component: 'ToolGroup' }, () => ({ type: 'engine', ref: 0 }))
+  await setup($, on, 'balanced')
+  const group = await mountGroup($, 'split', [readOf('e1', '/work/a.ts', 20), readOf('e2', '/work/b.ts', 20)])
+  await group.press({ key: 'show-group' })
+  expect(await group.find({ type: 'engine' })).toBeDefined()
+  expect(await group.find({ type: 'Button', text: 'Collapse' })).toBeDefined()
+  await group.unmount()
+})
+
 test('a failed call in a merged group shows its error lines and turns the border red', async ($, on) => {
   await setup($, on, 'balanced')
   const group = await mountGroup($, 'failing', [

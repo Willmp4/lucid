@@ -680,6 +680,24 @@ test('a result the block cannot show keeps its own row', async ($, on) => {
   await result.unmount()
 })
 
+// The engine's own row, as `next(e)` hands it to a hook. The engine refuses a tree that holds
+// it under a Box with a width, a height, a display, an overflow, a position, or a hover.
+const ENGINE: RenderElement = { type: 'engine', ref: 0 }
+
+test('a block’s first call that the block cannot show draws the block over its own row', async ($, on) => {
+  on('ui.render', { component: 'ToolUse' }, () => ENGINE)
+  const outcomes = await blackbox($, on)
+  await $.turn.start({ text: 'go', turnId: 'first' })
+  await call($, outcomes, 'f1', 'mcp__docs__index', { query: 'none' }, { result: '', text: '' })
+  await call($, outcomes, 'f2', 'Bash', { command: 'ls' }, { result: { stdout: 'a.png', stderr: '', interrupted: false }, text: 'a.png' })
+  await say($, 'first-end', 'Nothing is indexed.')
+  await $.turn.complete({ answer: 'Nothing is indexed.', durationMs: 2000, isAborted: false, turnId: 'first', reason: 'answer' })
+  const row = await mountUse($, tool('f1', 'mcp__docs__index', { query: 'none' }, ''))
+  expect(await row.find({ type: 'Text', text: exactly('2 calls · 2.0s') })).toBeDefined()
+  expect(await row.find({ type: 'engine' })).toBeDefined()
+  await row.unmount()
+})
+
 const IMAGE = { type: 'image', file: { base64: 'AAAA', type: 'image/png', originalSize: 4 } }
 
 test('an image read folds into its block, and the open block shows it as one muted line', async ($, on) => {

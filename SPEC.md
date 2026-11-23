@@ -179,6 +179,16 @@ row only, and the rule above holds at every level: each card reaches its
 whole payload through **Show all**, and through **Show ▸** first at
 `compact`.
 
+A tree that keeps Claude Code's own drawing beside this mod's (a block over
+a call's own row, a split group's **Collapse** button, a TLDR block under a
+reply, or a diagram card between the parts of a reply on another surface)
+holds the `next(e)` result in a `Box` with no `width`, `height`,
+`minWidth`, `minHeight`, `display`, `overflow`, `overflowX`, `position`, or
+`hover`. Claude Code refuses its own node under such a `Box` at any depth
+and skips the hook, so the row loses this mod's drawing. Each test of those
+trees answers `ui.render` beneath the mod with an engine node,
+`{ type: 'engine', ref: 0 }`, so the test harness applies the same check.
+
 ## Card density
 
 `/lucid density full|balanced|compact|blackbox` stores the level under the

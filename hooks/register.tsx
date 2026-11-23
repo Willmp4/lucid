@@ -261,9 +261,10 @@ async function drawElsewhere($: EngineInterface, e: RenderInput<'AssistantMessag
       ? await drawDiagram($, e, part)
       : await next({ ...e, props: { ...e.props, text: part.text, isFirstOfReply: e.props.isFirstOfReply && i === 0 } }))
   }
+  // The engine refuses its own node under a Box with a width, so these Boxes take none.
   return (
-    <Box flexDirection="column" width="100%">
-      {drawn.map((part, i) => <Box key={`part-${i}`} flexDirection="column" width="100%">{part}</Box>)}
+    <Box flexDirection="column">
+      {drawn.map((part, i) => <Box key={`part-${i}`} flexDirection="column">{part}</Box>)}
     </Box>
   )
 }
@@ -665,7 +666,7 @@ export const register: Register = on => {
     const { Box, Button } = ui
     if ((await Promise.all(group.ids.map(requestId => read($, memberOf(ungroupedAtom, { requestId }))))).some(Boolean)) {
       return (
-        <Box flexDirection="column" width="100%">
+        <Box flexDirection="column">
           {await next(forced)}
           <Button key="merge-group" label="Collapse" onPress={mark(false)} plain />
         </Box>
@@ -702,7 +703,7 @@ export const register: Register = on => {
           if (shown) return block
           const { Box } = $.ui.resolve(e)
           return (
-            <Box flexDirection="column" width="100%">
+            <Box flexDirection="column">
               {block}
               {await next(e)}
             </Box>

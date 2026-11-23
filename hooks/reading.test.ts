@@ -212,6 +212,22 @@ test('the reply draws in full, with Summarizing… and then the TLDR block benea
   await ui.unmount()
 })
 
+test('the TLDR block and its note draw beneath the engine’s own reply', async ($, on) => {
+  on('ui.render', { component: 'AssistantMessage' }, () => ({ type: 'engine', ref: 0 }))
+  const answer = held<ModelCompleteResult>()
+  const { clock } = await setup($, on, { model: () => answer.promise })
+  await turn($, 't1', 'explain the cache. tldr')
+  const ui = await mountReply($, 't1-reply')
+  expect(await ui.find({ type: 'Text', text: 'Summarizing…' })).toBeDefined()
+  expect(await ui.find({ type: 'engine' })).toBeDefined()
+  answer.settle(answered(SUMMARY))
+  await clock.settle()
+  await ui.redraw()
+  expect(await ui.find({ type: 'Text', text: SUMMARY })).toBeDefined()
+  expect(await ui.find({ type: 'engine' })).toBeDefined()
+  await ui.unmount()
+})
+
 for (const [label, result, reason] of [
   ['an API error', { isAnswered: false, reason: 'api-error', status: 529, error: 'overloaded', usage: USAGE }, 'API error overloaded (529)'],
   ['a timeout', { isAnswered: false, reason: 'aborted', usage: USAGE }, 'timed out'],
